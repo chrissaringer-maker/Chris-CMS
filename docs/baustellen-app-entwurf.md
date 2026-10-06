@@ -242,9 +242,9 @@ Bleibt in der **offiziellen Forma-App** (Daily-Log-Formular mit automatischem We
 5. ~~Deutschland oder Österreich?~~ **Geklärt: Österreich.** Einwendungsfrist 14 Tage (ÖNORM B 2110), Nummerierung nach Leistungsgruppe (z. B. 39.001).
 6. ~~Entscheidung Web-App oder nativ~~ **Entschieden:** eigenständige Web-App ohne Server (Abschnitt 0).
 7. **Azure:** Gibt es zu deinem Microsoft-365-Tenant schon ein Azure-Abo? Für die Live-Mitschrift wird eins gebraucht (Region EU).
-8. **Rolle:** Protokollierst du als **ÖBA** (für den Bauherrn) oder als **Bauleiter des Auftragnehmers**? Davon hängen Kennzeichen wie Mehrkostenforderung/Behinderung und der Protokollkopf ab.
-9. **Vertrag:** Ist die **ÖNORM B 2110** in deinen Bauverträgen vereinbart? Sonst trägt die 14-Tage-Klausel nicht automatisch.
-10. **iPad:** Privat oder **Firmengerät mit Verwaltung** (z. B. Intune)? Verwaltung kann Home-Bildschirm-Apps, Mikrofon oder Speicher einschränken.
+8. ~~Rolle~~ **Geklärt (06.10.):** ÖBA auf Bauherrenseite (Bauherrenvertreter). Folge: Fristverlauf hat nach dem Feldtest Vorrang; Kennzeichen für Anordnungen, Mehrkostenforderungen und Behinderungen (ÖNORM B 2110 Pkt. 7) auf der Wunschliste.
+9. ~~Vertrag~~ **Geklärt:** ÖNORM B 2110 ist immer Vertragsgrundlage – die 14-Tage-Klausel ist Standard.
+10. ~~iPad~~ **Geklärt:** Privatgerät ohne Geräteverwaltung, keine Einschränkungen. Das Vorhaben ist privat (Eigeninteresse, Studienzwecke).
 
 ## Quellen (Auswahl)
 
