@@ -39,6 +39,9 @@ Der **aktuelle Punkt** ist blau umrandet. Er wechselt nur durch Antippen oder mi
 3. **Anwesenheit:** Tipp auf den Knopf neben dem Namen schaltet weiter: offen → anwesend → entschuldigt →
    nicht erschienen. Neue Sitzungen beginnen bewusst mit „offen“.
 4. **+ Punkt**, dann **Diktat** (siehe unten) oder ins Textfeld tippen. Zuständig, Frist, Art und Status setzen.
+   **Überfällig** = Status offen und Frist vor dem Besprechungstag: in der Punktkarte rot mit Tagen
+   („3 Tage überfällig“), im PDF rot in der Spalte Frist, in der Firmen-Mail ganz oben. Gerechnet wird immer
+   zum **Besprechungstag**, nicht zum Versandtag – so bleiben PDF und Mail gleich, auch wenn später versendet wird.
    Unsicheres mit **„unklar“** markieren – erscheint im PDF als „[unklar – bitte ergänzen]“ und wird fortgeschrieben.
 5. Je Punkt: **Foto**, **Mediathek** (auch abfotografierte Papierskizzen), **Skizze** (Apple Pencil).
 6. Optional **Vorabzug-PDF** (Wasserzeichen „VORABZUG“) an die Firmen zur Ergänzung.
@@ -96,7 +99,7 @@ Frist und Text sind je Projekt unter **Projektdaten** änderbar. Keine Rechtsber
 
 ## Gerätetest „Feldtest 1“ (bitte je Punkt „ok“/„nicht ok“, bei Fehlern Bildschirmfoto)
 
-1. App ganz schließen, neu öffnen; unter „Sicherung“ steht die Version `2026-10-06-feldtest-1a`.
+1. App ganz schließen, neu öffnen; unter „Sicherung“ steht die Version `2026-10-06-feldtest-1b`.
 2. **Diktat** tippen, 10 s sprechen, **Stopp**: Kommt Text? Kommt eine Fehlermeldung (Wortlaut notieren)?
    Dasselbe im Flugmodus.
 3. Während eines Diktats **Mehr → Zurück zum Projekt**: Diktat endet, nichts wird nachgeschrieben.

@@ -5,8 +5,8 @@ import {
   uid, meetingTitle, formatDate, isLocked, versionLabel, finalizeMeeting, reopenMeeting, addItem, itemsForMeeting,
   canEditBase, canDelete, canRenumber, changeLg, lgFromCompany, normalizeLg, projectLgs, lgLabel, LG_GENERAL,
   carryOver, laterMeeting, seriesOf, ATTENDANCE, ATTENDANCE_CYCLE, attendanceOf,
-  defaultStatus, isOverdue, buildProtocol, companyDigests, mailtoUrl, distribution, fileSafe,
-  ITEM_TYPES, STATUS, isoDate,
+  defaultStatus, isOverdue, overdueDays, overdueText, buildProtocol, companyDigests, mailtoUrl, distribution, fileSafe,
+  ITEM_TYPES, STATUS,
 } from './model.js';
 import { importPhoto, toPdfImage } from './images.js';
 import { openSketch, BLANK_SIZE } from './sketch.js';
@@ -89,7 +89,6 @@ export async function renderMeeting(app, id) {
   const itemsById = new Map(bundle.items.map((i) => [i.id, i]));
   const attById = new Map(bundle.attachments.map((a) => [a.id, a]));
   const locked = isLocked(meeting);
-  const today = isoDate();
   const cards = new Map(); // itemId → Karte und Zugriffe für die Daumenleiste
   let currentId = null;
   const stale = () => gen !== renderGen;
@@ -287,7 +286,7 @@ export async function renderMeeting(app, id) {
     const chips = h('span', { class: 'inline' });
     const refreshChips = () => {
       mount(chips,
-        isOverdue(entry, meeting.date) ? h('span', { class: 'chip overdue' }, 'überfällig') : null,
+        isOverdue(entry, meeting.date) ? h('span', { class: 'chip overdue' }, overdueText(overdueDays(entry, meeting.date))) : null,
         entry.unclear ? h('span', { class: 'chip unclear' }, 'unklar') : null);
       card.className = `card item ${entry.status}${currentId === item.id ? ' current' : ''}`;
     };
@@ -660,7 +659,7 @@ export async function renderMeeting(app, id) {
   };
 
   const dist = distribution(project);
-  const digests = companyDigests({ project, meeting, items: [...itemsById.values()], refDate: today });
+  const digests = companyDigests({ project, meeting, items: [...itemsById.values()] });
 
   const finish = h('div', { class: 'card' },
     h('h3', {}, 'Abschluss und Versand'),

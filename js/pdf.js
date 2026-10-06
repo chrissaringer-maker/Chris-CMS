@@ -46,6 +46,7 @@ const lh = (size) => size * PT * 1.28;
 const INK = [29, 35, 43];
 const MUTED = [93, 102, 115];
 const WARN = [181, 71, 11];
+const RED = [196, 26, 22]; // überfällige Frist (zusätzlich als Text, damit es auch schwarz-weiß gedruckt erkennbar ist)
 const PURPLE = [122, 42, 118];
 const BRAND = [28, 52, 84];
 
@@ -207,8 +208,10 @@ export async function buildPdf(p, { draft, images = new Map() }) {
     const side = {
       no: [{ text: r.no, style: 'bold', color: INK }],
       company: lines(r.company || '-', COLS[2].w - 2).map((t) => ({ text: t, style: 'normal', color: INK })),
-      due: [{ text: r.due || '-', style: r.overdue ? 'bold' : 'normal', color: r.overdue ? WARN : INK }]
-        .concat(r.overdue ? [{ text: 'überfällig', style: 'bold', color: WARN }] : []),
+      // „03.10.2026 / 3 Tage / überfällig“ – ältere Endfassungen ohne Tageszahl zeigen nur „überfällig“
+      due: [{ text: r.due || '-', style: r.overdue ? 'bold' : 'normal', color: r.overdue ? RED : INK }]
+        .concat(r.overdue && r.overdueDays ? [{ text: `${r.overdueDays} ${r.overdueDays === 1 ? 'Tag' : 'Tage'}`, style: 'bold', color: RED }] : [])
+        .concat(r.overdue ? [{ text: 'überfällig', style: 'bold', color: RED }] : []),
       status: lines(r.status, COLS[4].w - 2).map((t) => ({ text: t, style: 'normal', color: INK })),
     };
     const sideH = Math.max(...Object.values(side).map((v) => v.length)) * lh(9.5);

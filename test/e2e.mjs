@@ -147,6 +147,7 @@ await card1.locator('textarea').fill('Brandschott Achse 3 herstellen, Material: 
 await card1.getByLabel('Zuständig').selectOption({ label: 'Trockenbau Huber' });
 assert.equal(await card1.locator('.item-no').textContent(), '39.001', 'Nummer folgt der LG der Firma');
 await card1.getByLabel('Frist').fill(isoOffset(-3));
+await eventually(async () => /^\d+ Tage? überfällig$/.test((await card1.locator('.chip.overdue').allTextContents())[0] ?? ''), true, 'Punktkarte zeigt Tage überfällig');
 // Diktat über die Daumenleiste hängt an den Text des aktuellen Punkts an
 await page.getByRole('button', { name: 'Diktat' }).click();
 await page.getByRole('button', { name: 'Stopp' }).waitFor();
@@ -210,6 +211,7 @@ writeFileSync(join(OUT, 'vorabzug.txt'), draftText);
 for (const s of ['Baubesprechung Nr. 1', 'VORABZUG', '39.001', 'LG 39 · Trockenbau', 'LG 00 · Allgemein', 'Brandschott Achse 3', 'Trockenbau Huber', 'überfällig', '[unklar - bitte ergänzen]', 'Abb. 39.001-1', 'Abb. 39.001-2', 'Beilagen', 'Anwesenheit', 'entschuldigt']) {
   assert.ok(draftText.includes(s), `Vorabzug enthält „${s}“`);
 }
+assert.match(draftText, /\b[1-9]\d* Tage?\b/, 'Vorabzug zeigt die Tage überfällig');
 
 // Endfassung
 page.once('dialog', (d) => d.accept());
@@ -234,6 +236,7 @@ const mailHref = await page.getByRole('link', { name: /Trockenbau Huber \(1, 1 �
 const mailBody = decodeURIComponent(mailHref.split('body=')[1]);
 assert.ok(mailHref.startsWith('mailto:eva@huber.example?subject='));
 assert.ok(mailBody.includes('ÜBERFÄLLIG') && mailBody.includes('39.001  Brandschott'));
+assert.match(mailBody, /ÜBERFÄLLIG \(Stand \d\d\.\d\d\.\d{4}\)\n39\.001 {2}Brandschott.* – Frist \d\d\.\d\d\.\d{4} – \d+ Tage? überfällig/);
 assert.equal(await page.getByRole('link', { name: /Müller Bau/ }).count(), 0, 'Firmen ohne offene Punkte bekommen keine Mail');
 await shot('04-endfassung');
 

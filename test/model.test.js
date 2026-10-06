@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   newProject, newCompany, newContact, createMeeting, addItem, updateEntry, entryFor, itemsForMeeting,
   buildProtocol, companyDigests, mailtoUrl, canDelete, canEditBase, finalizeMeeting, reopenMeeting,
-  versionLabel, compareNo, openItems, isOverdue, distribution, fileSafe, changeLg, lgFromCompany, nextNo,
+  versionLabel, compareNo, openItems, isOverdue, overdueDays, overdueText, distribution, fileSafe, changeLg, lgFromCompany, nextNo,
   normalizeLg, parseLgList, projectLgs, objectionClause, carryOver, laterMeeting,
 } from '../js/model.js';
 
@@ -136,6 +136,7 @@ test('Protokoll: Abschnitte, Verlauf, überfällig, Anlagen-Nummern', () => {
   assert.equal(row.lgLabel, 'Allgemein');
   assert.equal(row.note, 'Material fehlt');
   assert.equal(row.overdue, true); // Frist 10.10. < Sitzung 13.10.
+  assert.equal(row.overdueDays, 3);
   assert.equal(row.company, 'Müller Bau');
   assert.equal(prot2.figures[0].label, 'Abb. 00.001-1');
 
@@ -143,6 +144,7 @@ test('Protokoll: Abschnitte, Verlauf, überfällig, Anlagen-Nummern', () => {
   const done = prot3.sections.find((s) => s.title.startsWith('Erledigt')).rows[0];
   assert.deepEqual(done.history, [{ date: '13.10.2026', note: 'Material fehlt' }]);
   assert.equal(done.overdue, false);
+  assert.equal(done.overdueDays, 0);
   assert.match(prot3.objection, /binnen 14 Tagen/);
 });
 
@@ -155,14 +157,18 @@ test('Mail je Firma: nur eigene offene Punkte, überfällig zuerst, Hinweis auf 
   b = updateEntry(b, m1.id, { due: '2026-10-30' });
   const c = { ...addItem({ meeting: m1, items: [a, b], companyId: elektro.id, type: 'info' }), text: 'Info an Elektro' };
 
-  const digests = companyDigests({ project, meeting: m1, items: [a, b, c], refDate: '2026-10-06' });
+  const digests = companyDigests({ project, meeting: m1, items: [a, b, c] });
   assert.equal(digests.length, 1); // Info-Punkt an Elektro ist nicht offen
   const d = digests[0];
   assert.equal(d.company, 'Müller Bau');
   assert.deepEqual(d.recipients, ['max@mueller.example']);
   assert.equal(d.overdue, 1);
   assert.ok(d.body.indexOf('ÜBERFÄLLIG') < d.body.indexOf('NEU'));
-  assert.match(d.body, /00\.001 {2}Brandschott – Frist 01\.10\.2026/);
+  assert.match(d.body, /ÜBERFÄLLIG \(Stand 06\.10\.2026\)\n00\.001 {2}Brandschott – Frist 01\.10\.2026 – 5 Tage überfällig\n/);
+  assert.match(d.body, /Schalung prüfen – Frist 30\.10\.2026\n/); // nicht überfällig: keine Tagesangabe
+  // gerechnet wird zum Besprechungstag, nicht zum Versandtag (wie im Protokoll)
+  const [early] = companyDigests({ project, meeting: { ...m1, date: '2026-10-03' }, items: [a, b, c] });
+  assert.match(early.body, /Frist 01\.10\.2026 – 2 Tage überfällig/);
   assert.match(d.body, /Maßgeblich ist das Gesamtprotokoll vom 06\.10\.2026/);
   assert.match(d.subject, /Baubesprechung Nr\. 1 vom 06\.10\.2026 – Ihre offenen Punkte \(Müller Bau\)/);
 
@@ -200,6 +206,13 @@ test('Hilfsfunktionen', () => {
   assert.equal(isOverdue({ status: 'offen', due: '2026-10-01' }, '2026-10-02'), true);
   assert.equal(isOverdue({ status: 'erledigt', due: '2026-10-01' }, '2026-10-02'), false);
   assert.equal(isOverdue({ status: 'offen', due: '' }, '2026-10-02'), false);
+  assert.equal(overdueDays({ status: 'offen', due: '2026-10-01' }, '2026-10-02'), 1);
+  assert.equal(overdueDays({ status: 'offen', due: '2026-10-02' }, '2026-10-02'), 0); // Frist heute: nicht überfällig
+  assert.equal(overdueDays({ status: 'erledigt', due: '2026-09-01' }, '2026-10-02'), 0);
+  assert.equal(overdueDays({ status: 'offen', due: '2026-03-27' }, '2026-03-30'), 3); // über die Sommerzeit-Umstellung
+  assert.equal(overdueDays({ status: 'offen', due: '2025-12-31' }, '2026-10-06'), 279);
+  assert.equal(overdueText(1), '1 Tag überfällig');
+  assert.equal(overdueText(14), '14 Tage überfällig');
   const { project } = setup();
   assert.deepEqual(distribution(project).map((d) => d.email), ['max@mueller.example', 'eva@huber.example']);
   assert.equal(fileSafe('BV Müllerstraße – Nr. 4'), 'BV_Muellerstrasse_Nr._4');

@@ -318,6 +318,15 @@ export function isOverdue(entry, refDate) {
   return entry.status === 'offen' && !!entry.due && entry.due < refDate;
 }
 
+// Kalendertage seit Ablauf der Frist bis zum Bezugstag (Besprechungstag, damit eine Endfassung
+// beim späteren Neuerzeugen dieselbe Zahl zeigt); 0 = nicht überfällig
+export function overdueDays(entry, refDate) {
+  if (!isOverdue(entry, refDate)) return 0;
+  return Math.round((Date.parse(refDate) - Date.parse(entry.due)) / 86400000);
+}
+
+export const overdueText = (days) => `${days} ${days === 1 ? 'Tag' : 'Tage'} überfällig`;
+
 // Offene Punkte eines Projekts über alle Reihen, jeweils mit ihrem letzten Stand.
 export function openItems(items, projectId) {
   return items
@@ -353,6 +362,7 @@ export function buildProtocol({ project, meeting, meetings, items, attachments =
       statusKey: entry.status,
       unclear: !!entry.unclear,
       overdue: isOverdue(entry, meeting.date),
+      overdueDays: overdueDays(entry, meeting.date),
       isNew: item.createdMeetingId === meeting.id,
       attachments: (entry.attachmentIds ?? [])
         .map((id) => attById.get(id))
@@ -413,7 +423,8 @@ function oneLine(s, max = 220) {
 }
 
 // Je Firma: Übersicht der für sie offenen Punkte (überfällig zuerst). Das Gesamtprotokoll bleibt maßgeblich.
-export function companyDigests({ project, meeting, items, refDate = isoDate() }) {
+// Überfällig wird wie im Protokoll zum Besprechungstag gerechnet, nicht zum Versandtag.
+export function companyDigests({ project, meeting, items, refDate = meeting.date }) {
   const rows = itemsForMeeting(items, meeting.id).filter(({ entry }) => entry.status === 'offen' && entry.companyId);
   const out = [];
   for (const company of project.companies) {
@@ -426,6 +437,8 @@ export function companyDigests({ project, meeting, items, refDate = isoDate() })
       const parts = [`${item.no}  ${oneLine(item.text || '(ohne Text)')}`];
       if (entry.note.trim() && item.createdMeetingId !== meeting.id) parts.push(`Stand: ${oneLine(entry.note, 160)}`);
       parts.push(entry.due ? `Frist ${formatDate(entry.due)}` : 'ohne Frist');
+      const late = overdueDays(entry, refDate);
+      if (late) parts.push(overdueText(late));
       return parts.join(' – ');
     };
     const block = (title, list) => (list.length ? [title, ...list.map(line), ''] : []);
@@ -437,7 +450,7 @@ export function companyDigests({ project, meeting, items, refDate = isoDate() })
       '',
       `nachfolgend die für Sie offenen Punkte aus der ${meetingTitle(meeting)} vom ${date}.`,
       '',
-      ...block('ÜBERFÄLLIG', overdue),
+      ...block(`ÜBERFÄLLIG (Stand ${formatDate(refDate)})`, overdue),
       ...block('NEU', fresh),
       ...block('OFFEN', rest),
       `Maßgeblich ist das Gesamtprotokoll vom ${date}. Diese Übersicht dient nur der Information.`,

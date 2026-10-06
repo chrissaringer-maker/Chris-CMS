@@ -12,8 +12,8 @@ Kürzel: E = Ergonomie, B = Baupraxis, T = Technik (Prüfberichte vom 06.10.2026
 | Punkt-Blatt: Zuständig, Frist (+1/+2/+4 Wochen, nächster Termin), Status, LG mit dem Daumen | E4 | Bis dahin: Felder in der Karte (zweihändig). |
 | Ort und Planbezug (Bauteil, Stiege, Geschoß, Top, Raum, Achse, Plan-Nr./Index) | B6 | Vorgemerkt für die nächste Runde. Bis dahin Ort am Anfang des Textes nennen. |
 | Sicherung je Projekt (kleinere Dateien) | T11 | Vorgemerkt für die nächste Runde. |
-| Fristverlauf automatisch („Frist 03.10. → 24.10.2026 (Nr. 2)“), Zuständigkeits-/Statuswechsel, Verlauf kürzen | B2 | Beweiswert bei Verzug/Pönale. |
-| Kennzeichen Termin-/Kostenrelevanz, Mehrkostenforderung, Behinderung, Anordnung | B4 | Hängt davon ab, ob der Nutzer ÖBA oder Auftragnehmer ist. |
+| **Vorrang 1:** Fristverlauf automatisch („Frist 03.10. → 24.10.2026 (Nr. 2)“), Zuständigkeits-/Statuswechsel, Verlauf kürzen | B2 | Nutzer ist ÖBA (06.10.): Beweiswert bei Verzug/Pönale. Heute zeigt die aktuelle Zeile nur die geltende Frist; die alte steht nur im früheren Protokoll. |
+| Kennzeichen Termin-/Kostenrelevanz, Mehrkostenforderung, Behinderung, Anordnung | B4 | Nutzer ist ÖBA auf Bauherrenseite, ÖNORM B 2110 immer Vertragsgrundlage: relevant sind Anordnungen der ÖBA sowie vom AN angemeldete Mehrkostenforderungen und Behinderungen (Leistungsabweichungen, ÖNORM B 2110 Pkt. 7). |
 | Mitwirkende Firmen je Punkt (federführend + Mitwirkung), Kurzmail auch an Mitwirkende | B7 | |
 | Protokollkopf mit Rollen (AG, ÖBA, Planer, BauKG), Geschäftszahl, nächster Termin mit Uhrzeit/Ort, Wochentag | B8 | |
 | Begehungsmängel in der Baubesprechung, Kurzmail projektweit, PDF „Offene Punkte je Firma“ | B9 | Mängel mit Plan-Pin besser in der Forma-App erfassen (siehe Entwurf). |
