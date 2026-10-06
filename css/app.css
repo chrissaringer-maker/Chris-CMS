@@ -392,6 +392,9 @@ html[data-hand="links"] .rail { right: auto; left: max(var(--rail-edge), env(saf
 .rail-btn.wide .icon { width: 30px; height: 30px; }
 .rail-label { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rail-btn:not(.wide) .rail-label { white-space: normal; }
+/* breite Knöpfe: bis zu zwei Zeilen statt „Neue Baubes…“ */
+.rail-btn.wide .rail-label { white-space: normal; text-align: left; line-height: 1.15;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .rail-btn.primary { background: var(--primary); color: #fff; }
 .rail-btn.danger { background: var(--red); color: #fff; }
 .rail-btn.active { animation: rec 1.4s ease-in-out infinite; }

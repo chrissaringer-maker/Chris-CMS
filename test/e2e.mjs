@@ -80,6 +80,9 @@ async function eventually(read, expected, msg) {
   }
   assert.deepEqual(actual, expected, msg);
 }
+// Beschriftungen im Knopffeld, die nicht vollständig sichtbar sind („Neue Baubes…“)
+const clippedRailLabels = () => page.locator('#rail .rail-label').evaluateAll((els) =>
+  els.filter((e) => e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1).map((e) => e.textContent));
 const isoOffset = (days) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
 
 process.on('uncaughtException', async (e) => {
@@ -104,6 +107,8 @@ for (const [firma, gewerk, lg, name, mail] of [
 assert.equal(await page.getByLabel('Leistungsgruppe(n)').first().inputValue(), '07');
 await shot('01-firmen');
 await page.locator('#back').click();
+await page.getByRole('button', { name: 'Neue Baubesprechung' }).waitFor();
+assert.deepEqual(await clippedRailLabels(), [], 'Beschriftung im Knopffeld abgeschnitten (Projekt)');
 await page.getByRole('button', { name: 'Neue Baubesprechung' }).click();
 await page.getByRole('button', { name: 'Alle Firmen hinzufügen' }).click();
 // Anwesenheit beginnt offen; Tipp schaltet weiter: anwesend → entschuldigt
@@ -123,6 +128,7 @@ for (const b of boxes) {
 const dictateBox = boxes.at(-1);
 assert.ok(dictateBox.height >= 96 && dictateBox.bottom > 820 - 40, 'Diktat breit ganz unten');
 assert.equal(await page.locator('#rail').getByText('Zurück').count(), 0, 'Zurück nicht im Knopffeld');
+assert.deepEqual(await clippedRailLabels(), [], 'Beschriftung im Knopffeld abgeschnitten (Besprechung)');
 
 // Punkt 1: Aufgabe für den Trockenbauer, Frist in der Vergangenheit (wird überfällig)
 await page.getByRole('button', { name: 'Neuer Punkt' }).click();

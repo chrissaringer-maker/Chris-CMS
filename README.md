@@ -34,7 +34,7 @@ Der **aktuelle Punkt** ist blau umrandet. Er wechselt nur durch Antippen oder mi
 
 1. Projekt anlegen, unter **Firmen** die Firmen mit Gewerk, **Leistungsgruppe** (LB-HB, z. B. 39 Trockenbau),
    Ansprechpartner und E-Mail eintragen. Die Kontakte „im Verteiler“ bilden den Verteiler.
-2. **Neue Baubesprechung** (oder **Begehung**). Offene und unklare Punkte früherer Sitzungen sind schon drin –
+2. **Neue Besprechung** (oder **Begehung**). Offene und unklare Punkte früherer Sitzungen sind schon drin –
    auch solche, die du in der Vorsitzung nachträglich ergänzt hast (Abgleich beim Öffnen).
 3. **Anwesenheit:** Tipp auf den Knopf neben dem Namen schaltet weiter: offen → anwesend → entschuldigt →
    nicht erschienen. Neue Sitzungen beginnen bewusst mit „offen“.
@@ -96,7 +96,7 @@ Frist und Text sind je Projekt unter **Projektdaten** änderbar. Keine Rechtsber
 
 ## Gerätetest „Feldtest 1“ (bitte je Punkt „ok“/„nicht ok“, bei Fehlern Bildschirmfoto)
 
-1. App ganz schließen, neu öffnen; unter „Sicherung“ steht die Version `2026-10-06-feldtest-1`.
+1. App ganz schließen, neu öffnen; unter „Sicherung“ steht die Version `2026-10-06-feldtest-1a`.
 2. **Diktat** tippen, 10 s sprechen, **Stopp**: Kommt Text? Kommt eine Fehlermeldung (Wortlaut notieren)?
    Dasselbe im Flugmodus.
 3. Während eines Diktats **Mehr → Zurück zum Projekt**: Diktat endet, nichts wird nachgeschrieben.

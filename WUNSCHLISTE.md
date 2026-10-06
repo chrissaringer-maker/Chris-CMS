@@ -22,6 +22,7 @@ Kürzel: E = Ergonomie, B = Baupraxis, T = Technik (Prüfberichte vom 06.10.2026
 | Zeichen-Editor: Einstellung „Stifthand“, Rückfrage bei „Alles löschen“, besserer Handballenschutz | E11, T9 | |
 | Knopffeld über der Bildschirmtastatur (visualViewport), Hinweise dann oben | E8, T10 | Nur am Gerät prüfbar. |
 | Signalton bei Start/Stopp des Diktats, kombinierter Knopf „Neuer Punkt + Diktat“, Diktat verwerfen | E9, E12 | |
+| Zweites Diktat in denselben Punkt: neue Zeile bzw. Satzende statt nur Leerzeichen | Bildprüfung 06.10. | Im Test lief „…Einbau KW 43 Kabeltrasse im Gang 2…“ zu einem Satz zusammen. Erst nach dem Gerätetest entscheiden (setzt Safari selbst Satzzeichen?). Bis dahin „Punkt“ sprechen oder von Hand trennen. |
 | Eigene (Sub-)Domain statt github.io, Inhaltssicherheitsrichtlinie | T13 | Umzug nur über Sicherung und Wiederherstellung. |
 | mailto-Längengrenze (sehr viele Punkte je Firma) | T14 | |
 | Anbindung an Autodesk Forma (PDF nach Files, Aufgaben als Issues) | Entwurf Phase 2 | Bis dahin: jedes versendete PDF von Hand in Forma Files ablegen (Archiv, Vertretung). |

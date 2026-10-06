@@ -149,7 +149,7 @@ async function renderProject(id) {
     { icon: 'settings', label: 'Projekt', aria: 'Projektdaten', href: `#/p/${id}/daten` },
     { icon: 'building', label: `Firmen (${project.companies.length})`, aria: 'Firmen und Kontakte', href: `#/p/${id}/firmen` },
     { icon: 'plus', label: 'Begehung', aria: 'Neue Baubegehung', onclick: () => start('begehung') },
-    { icon: 'plus', label: 'Neue Baubesprechung', primary: true, wide: true, onclick: () => start('besprechung') },
+    { icon: 'plus', label: 'Neue Besprechung', aria: 'Neue Baubesprechung', primary: true, wide: true, onclick: () => start('besprechung') },
   ]);
   mount(app,
     h('h2', {}, MEETING_TYPES.besprechung.label + 'en'),
