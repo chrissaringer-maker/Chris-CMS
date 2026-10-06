@@ -2,7 +2,8 @@
 //   npx http-server -c-1 -p 8080 .   und dann   node test/e2e.mjs [Ausgabeordner]
 import { createRequire } from 'node:module';
 import { execSync } from 'node:child_process';
-import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
 import util from 'node:util';
@@ -22,8 +23,39 @@ const fixture = new URL('./fixture-photo.jpg', import.meta.url).pathname;
 
 // BROWSER=webkit: Engine von Safari (in CI); LEGACY=1: Schnittstellen entfernen, die ältere iPads nicht haben
 const ENGINE = process.env.BROWSER ?? 'chromium';
-const browser = await playwright[ENGINE].launch(ENGINE === 'chromium' ? { executablePath: process.env.CHROMIUM_PATH } : {});
-const context = await browser.newContext({ viewport: { width: 1180, height: 820 }, hasTouch: true, acceptDownloads: true, locale: 'de-AT' });
+const contextOptions = { viewport: { width: 1180, height: 820 }, hasTouch: true, acceptDownloads: true, locale: 'de-AT' };
+
+// Bilddaten (Blob) in IndexedDB speichern – gibt „ok“ oder den Fehler zurück
+const blobProbe = (p) => p.evaluate(() => new Promise((resolve) => {
+  const req = indexedDB.open('bp-probe', 1);
+  req.onupgradeneeded = () => req.result.createObjectStore('s');
+  req.onerror = () => resolve(`open: ${req.error?.name}`);
+  req.onsuccess = () => {
+    const tx = req.result.transaction('s', 'readwrite');
+    try {
+      tx.objectStore('s').put({ b: new Blob(['x'], { type: 'image/jpeg' }) }, 1);
+    } catch (e) {
+      resolve(`${e.name}: ${e.message}`);
+    }
+    tx.oncomplete = () => resolve('ok');
+    tx.onerror = (e) => resolve(`${e.target.error?.name}: ${e.target.error?.message}`);
+  };
+}));
+
+let browser;
+let context;
+if (ENGINE === 'webkit') {
+  // Vergleich: WebKit ohne Profil (ähnlich einem privaten Tab) gegen WebKit mit Profil (wie die installierte App)
+  const eph = await playwright.webkit.launch();
+  const ephPage = await eph.newPage();
+  await ephPage.goto(BASE);
+  console.log('WebKit ohne Profil – Bild in IndexedDB speichern:', await blobProbe(ephPage));
+  await eph.close();
+  context = await playwright.webkit.launchPersistentContext(mkdtempSync(join(tmpdir(), 'bp-webkit-')), contextOptions);
+} else {
+  browser = await playwright.chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
+  context = await browser.newContext(contextOptions);
+}
 if (process.env.LEGACY) {
   await context.addInitScript(() => {
     delete window.createImageBitmap; // erst ab iPadOS 15
@@ -51,7 +83,11 @@ await context.addInitScript(() => {
   }
   window.SpeechRecognition = window.webkitSpeechRecognition = FakeRecognition;
 });
-const page = await context.newPage();
+const page = context.pages()[0] ?? (await context.newPage());
+if (ENGINE === 'webkit') {
+  await page.goto(BASE);
+  console.log('WebKit mit Profil – Bild in IndexedDB speichern:', await blobProbe(page));
+}
 // optional langsamer Rechner wie im CI nachstellen: CPU_THROTTLE=6 node test/e2e.mjs
 if (process.env.CPU_THROTTLE && ENGINE === 'chromium') await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.CPU_THROTTLE) });
 const errors = [];
@@ -88,6 +124,10 @@ async function eventually(read, expected, msg) {
   }
   assert.deepEqual(actual, expected, msg);
 }
+// Eingabefelder unter 16 px: Safari auf dem iPad zoomt beim Antippen automatisch hinein
+const smallFields = () => page.evaluate(() => [...document.querySelectorAll('input, select, textarea')]
+  .filter((e) => e.offsetParent !== null && parseFloat(getComputedStyle(e).fontSize) < 16)
+  .map((e) => `${e.tagName} ${e.getAttribute('aria-label') ?? e.id ?? ''} ${getComputedStyle(e).fontSize}`));
 // Beschriftungen im Knopffeld, die nicht vollständig sichtbar sind („Neue Baubes…“)
 const clippedRailLabels = () => page.locator('#rail .rail-label').evaluateAll((els) =>
   els.filter((e) => e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1).map((e) => e.textContent));
@@ -137,6 +177,7 @@ const dictateBox = boxes.at(-1);
 assert.ok(dictateBox.height >= 96 && dictateBox.bottom > 820 - 40, 'Diktat breit ganz unten');
 assert.equal(await page.locator('#rail').getByText('Zurück').count(), 0, 'Zurück nicht im Knopffeld');
 assert.deepEqual(await clippedRailLabels(), [], 'Beschriftung im Knopffeld abgeschnitten (Besprechung)');
+assert.deepEqual(await smallFields(), [], 'Eingabefelder unter 16 px (Safari zoomt)');
 
 // Punkt 1: Aufgabe für den Trockenbauer, Frist in der Vergangenheit (wird überfällig)
 await page.getByRole('button', { name: 'Neuer Punkt' }).click();
@@ -181,6 +222,7 @@ await card2.locator('textarea').fill('Baustrom wird ab nächster Woche umgestell
 await card2.getByLabel('unklar').check();
 assert.equal(await card2.getByLabel('Status').inputValue(), 'info', 'Info-Punkt hat Status „zur Kenntnis“');
 assert.equal(await card2.locator('.item-no').textContent(), '00.001', 'LG 00 ist wieder frei');
+assert.deepEqual(await smallFields(), [], 'Eingabefelder in Punktkarten unter 16 px (Safari zoomt)');
 
 // Skizze zu Punkt 1
 await card1.getByRole('button', { name: 'Skizze', exact: true }).click();
@@ -211,6 +253,26 @@ await page.getByRole('button', { name: 'Fertig' }).click();
 await page.locator('.sketch').waitFor({ state: 'detached' });
 await page.waitForTimeout(800);
 await shot('03-besprechung');
+
+// Speicherfehler bei Bildern (z. B. Speicher voll) werden gemeldet statt still verschluckt
+await page.evaluate(() => {
+  const put = IDBObjectStore.prototype.put;
+  window.__restorePut = () => (IDBObjectStore.prototype.put = put);
+  IDBObjectStore.prototype.put = function (...args) {
+    if (this.name === 'attachments') throw new DOMException('Testfehler', 'QuotaExceededError');
+    return put.apply(this, args);
+  };
+});
+await card1.getByRole('button', { name: 'Skizze', exact: true }).click();
+const box3 = await page.locator('.sketch canvas').boundingBox();
+await page.mouse.move(box3.x + 60, box3.y + 60);
+await page.mouse.down();
+await page.mouse.move(box3.x + 200, box3.y + 120, { steps: 5 });
+await page.mouse.up();
+await page.getByRole('button', { name: 'Fertig' }).click();
+await page.locator('#toast', { hasText: 'Die Skizze wurde NICHT gespeichert: QuotaExceededError' }).waitFor();
+await page.evaluate(() => window.__restorePut());
+assert.equal(await card1.locator('.thumb').count(), 2, 'kein Bild ohne Speicherung angezeigt');
 
 // Vorabzug
 const draftPdf = await download(() => page.getByRole('button', { name: 'Vorabzug-PDF' }).click());
@@ -332,5 +394,5 @@ await page.getByRole('link', { name: /BV Musterstraße 12/ }).waitFor();
 await context.setOffline(false);
 
 assert.deepEqual(errors, [], `Keine JS-Fehler: ${errors.join(' | ')}`);
-await browser.close();
+await (browser ?? context).close();
 console.log(`E2E OK (${ENGINE}${process.env.LEGACY ? ', ältere Schnittstellen' : ''}) –`, OUT);

@@ -64,6 +64,8 @@ Der **aktuelle Punkt** ist blau umrandet. Er wechselt nur durch Antippen oder mi
 - **Ungeklärt:** In der installierten Home-Bildschirm-App ist die Spracherkennung laut Berichten teils gesperrt.
   Dann zeigt der Knopf „Tastatur-Diktat“ und öffnet die Tastatur; diktiert wird mit der Mikrofon-Taste der Tastatur.
   Ob es auf deinem iPad geht, zeigt der Gerätetest. Wenn nicht: Sprachnotiz als Tonaufnahme steht auf der Wunschliste.
+- **Ausweg ohne Spracherkennung:** Mit dem Apple Pencil direkt ins Textfeld schreiben – „Kritzeln“ wandelt die
+  Handschrift sofort in Text um (Deutsch ab iPadOS 14.5, Einstellungen → Apple Pencil → Kritzeln). Kein Ton, kein Server.
 
 ## Nummerierung nach Leistungsgruppe
 
@@ -101,11 +103,12 @@ Frist und Text sind je Projekt unter **Projektdaten** änderbar. Keine Rechtsber
 
 ## Gerätetest „Feldtest 1“ (bitte je Punkt „ok“/„nicht ok“, bei Fehlern Bildschirmfoto)
 
-1. App ganz schließen, neu öffnen; unter „Sicherung“ steht die Version `2026-10-06-feldtest-1b`. Unter „Speicher“
+1. App ganz schließen, neu öffnen; unter „Sicherung“ steht die Version `2026-10-06-feldtest-1c`. Unter „Speicher“
    sollte „Dauerhafter Speicher ist aktiv.“ stehen – wenn nicht, Wortlaut notieren (dann ist die Sicherung umso wichtiger).
 2. **Diktat** tippen, 10 s sprechen, **Stopp**: Kommt Text? Kommt eine Fehlermeldung (Wortlaut notieren)?
    Dasselbe im Flugmodus.
 3. Während eines Diktats **Mehr → Zurück zum Projekt**: Diktat endet, nichts wird nachgeschrieben.
+   Danach mit dem Apple Pencil in ein Punkt-Textfeld schreiben („Kritzeln“): Wird die Handschrift zu Text?
 4. iPad quer mit der rechten Hand halten: Erreichst du alle Knöpfe unten rechts ohne Umgreifen? Welche nicht?
 5. Durch die Liste wischen: Bleibt der blaue Rahmen am selben Punkt? Landet ein **Foto** beim umrandeten Punkt?
 6. **Sicherung erstellen** → im Teilen-Menü abbrechen: Es muss „NICHTS gesichert“ erscheinen. Dann wirklich in

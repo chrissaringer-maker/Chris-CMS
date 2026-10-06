@@ -199,22 +199,36 @@ export async function renderMeeting(app, id) {
   const listFor = (target) => (target.entry ? target.entry.attachmentIds : meeting.attachmentIds);
   const saveTarget = (target) => (target.entry ? store.saveItem(itemsById.get(target.item.id)) : store.saveMeeting(meeting));
 
+  // Speicherfehler bei Bildern nie still verschlucken – sonst glaubt man, das Bild sei im Protokoll
+  const failed = (what, e) =>
+    toast(`${what} wurde NICHT gespeichert: ${e?.name && e.name !== 'Error' ? `${e.name}: ` : ''}${e?.message ?? e}`, 10000);
+
   async function addPhotos(target, capture) {
     stopDictation();
     const files = await pickFile({ capture, multiple: !capture });
     if (!files.length) return;
     toast('Foto wird verarbeitet …');
+    let error = null;
     for (const f of files) {
-      const img = await importPhoto(f);
-      const att = {
-        id: uid(), projectId: project.id, kind: 'photo', caption: '', original: img.blob, rendered: null, thumb: img.thumb,
-        strokes: [], grid: false, width: img.width, height: img.height, createdAt: new Date().toISOString(),
-      };
-      await store.saveAttachment(att);
-      listFor(target).push(att.id);
+      try {
+        const img = await importPhoto(f);
+        const att = {
+          id: uid(), projectId: project.id, kind: 'photo', caption: '', original: img.blob, rendered: null, thumb: img.thumb,
+          strokes: [], grid: false, width: img.width, height: img.height, createdAt: new Date().toISOString(),
+        };
+        await store.saveAttachment(att);
+        listFor(target).push(att.id);
+      } catch (e) {
+        error = e; // die übrigen Fotos trotzdem übernehmen
+      }
     }
-    await saveTarget(target);
+    try {
+      await saveTarget(target);
+    } catch (e) {
+      error ??= e;
+    }
     rerender();
+    if (error) failed(files.length > 1 ? 'Mindestens ein Foto' : 'Das Foto', error);
   }
 
   async function addSketch(target) {
@@ -225,13 +239,25 @@ export async function renderMeeting(app, id) {
       id: uid(), projectId: project.id, kind: 'sketch', caption: '', original: null, rendered: res.rendered, thumb: res.thumb,
       strokes: res.strokes, grid: res.grid, ...BLANK_SIZE, createdAt: new Date().toISOString(),
     };
-    await store.saveAttachment(att);
-    listFor(target).push(att.id);
-    await saveTarget(target);
+    try {
+      await store.saveAttachment(att);
+      listFor(target).push(att.id);
+      await saveTarget(target);
+    } catch (e) {
+      return failed('Die Skizze', e);
+    }
     rerender();
   }
 
   async function attachmentMenu(att, target) {
+    try {
+      await attachmentAction(att, target);
+    } catch (e) {
+      failed('Die Änderung am Bild', e);
+    }
+  }
+
+  async function attachmentAction(att, target) {
     const image = att.rendered ?? att.original;
     if (locked) return viewImage(image, att.caption);
     const action = await choose(att.caption || (att.kind === 'sketch' ? 'Skizze' : 'Foto'), [

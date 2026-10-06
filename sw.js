@@ -1,7 +1,7 @@
 // Offline-Fähigkeit mit festen Versionen: Jede Version wird vollständig vorab geladen und dann
 // ausschließlich aus ihrem eigenen Cache ausgeliefert (kein Mischbetrieb alter und neuer Dateien).
 // Eine neue Version wartet, bis in der App „Neu starten“ getippt wird – nie mitten in der Besprechung.
-const VERSION = '2026-10-06-feldtest-1b';
+const VERSION = '2026-10-06-feldtest-1c';
 const CACHE = `bp-${VERSION}`;
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
