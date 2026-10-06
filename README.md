@@ -8,6 +8,7 @@ und als PDF-Protokoll an die Firmen verschicken. Offene Punkte werden automatisc
 
 ## Auf dem iPad einrichten
 
+0. Voraussetzung: **iPadOS 15.4 oder neuer** (Einstellungen → Allgemein → Info). Darunter startet die App nicht.
 1. In **Safari** die App-Adresse öffnen: **https://chrissaringer-maker.github.io/Chris-CMS/**
 2. **Teilen → Mehr anzeigen → „Zum Home-Bildschirm“ → Hinzufügen.**
 3. **Ab jetzt nur noch die App vom Home-Bildschirm benutzen.** Safari und die installierte App speichern
@@ -95,11 +96,13 @@ Frist und Text sind je Projekt unter **Projektdaten** änderbar. Keine Rechtsber
 - Mails: Die App kann Empfänger *oder* Anhang vorbelegen, nicht beides (Grenze von Web-Apps auf iOS).
 - Die Liste der Leistungsgruppen ist nicht eingebaut (die amtliche LB-HB-Liste war nicht abrufbar).
 - PDF-Schrift: Buchstaben außerhalb Westeuropas werden auf die Grundform gebracht (Šimić → Simic).
-- Getestet automatisiert in Chromium (Querformat 1180 × 820). **Safari auf dem iPad muss von Hand geprüft werden.**
+- Automatisch getestet (Querformat 1180 × 820) in Chromium, in WebKit (Engine von Safari) und ohne Schnittstellen,
+  die ältere iPads nicht haben. **Safari auf dem iPad (Diktat, Teilen, Pencil, Kamera) muss von Hand geprüft werden.**
 
 ## Gerätetest „Feldtest 1“ (bitte je Punkt „ok“/„nicht ok“, bei Fehlern Bildschirmfoto)
 
-1. App ganz schließen, neu öffnen; unter „Sicherung“ steht die Version `2026-10-06-feldtest-1b`.
+1. App ganz schließen, neu öffnen; unter „Sicherung“ steht die Version `2026-10-06-feldtest-1b`. Unter „Speicher“
+   sollte „Dauerhafter Speicher ist aktiv.“ stehen – wenn nicht, Wortlaut notieren (dann ist die Sicherung umso wichtiger).
 2. **Diktat** tippen, 10 s sprechen, **Stopp**: Kommt Text? Kommt eine Fehlermeldung (Wortlaut notieren)?
    Dasselbe im Flugmodus.
 3. Während eines Diktats **Mehr → Zurück zum Projekt**: Diktat endet, nichts wird nachgeschrieben.
@@ -133,6 +136,8 @@ npm test                                  # Fachlogik (node:test)
 npx http-server -c-1 -p 8080 . &          # lokaler Server
 node test/e2e.mjs test-output             # Browser-Durchlauf (Querformat) mit Playwright (braucht pdftotext)
 CPU_THROTTLE=6 node test/e2e.mjs test-output   # dasselbe auf gedrosselter CPU (deckt Wettläufe auf wie im CI)
+LEGACY=1 node test/e2e.mjs test-output         # ohne createImageBitmap/getCoalescedEvents (ältere iPads)
+BROWSER=webkit node test/e2e.mjs test-output   # Engine von Safari (braucht Playwright-WebKit, läuft im CI)
 node test/stress.mjs test-output          # Stresstest: 30 Sitzungen, ~600 Punkte, 40 große Fotos
 ```
 

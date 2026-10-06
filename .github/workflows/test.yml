@@ -19,3 +19,22 @@ jobs:
           npx --yes http-server -c-1 -p 8080 -s . &
           sleep 2
           node test/e2e.mjs test-output
+          # wie ein älteres iPad: ohne createImageBitmap und getCoalescedEvents (Rückfallwege)
+          LEGACY=1 node test/e2e.mjs test-output-alt
+
+  # Engine von Safari (WebKit). Ersetzt nicht den Test am iPad, findet aber Engine-Unterschiede vorab.
+  webkit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Browser-Durchlauf WebKit
+        run: |
+          sudo apt-get install -y poppler-utils >/dev/null
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps webkit
+          npx --yes http-server -c-1 -p 8080 -s . &
+          sleep 2
+          BROWSER=webkit node test/e2e.mjs test-output-webkit

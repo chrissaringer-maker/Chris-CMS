@@ -20,8 +20,16 @@ const OUT = process.argv[2] ?? 'test-output';
 mkdirSync(OUT, { recursive: true });
 const fixture = new URL('./fixture-photo.jpg', import.meta.url).pathname;
 
-const browser = await playwright.chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
+// BROWSER=webkit: Engine von Safari (in CI); LEGACY=1: Schnittstellen entfernen, die ältere iPads nicht haben
+const ENGINE = process.env.BROWSER ?? 'chromium';
+const browser = await playwright[ENGINE].launch(ENGINE === 'chromium' ? { executablePath: process.env.CHROMIUM_PATH } : {});
 const context = await browser.newContext({ viewport: { width: 1180, height: 820 }, hasTouch: true, acceptDownloads: true, locale: 'de-AT' });
+if (process.env.LEGACY) {
+  await context.addInitScript(() => {
+    delete window.createImageBitmap; // erst ab iPadOS 15
+    delete PointerEvent.prototype.getCoalescedEvents; // erst ab iPadOS 18.2
+  });
+}
 // Spracherkennung von Safari nachbilden: liefert erst ein vorläufiges, dann ein endgültiges Ergebnis
 await context.addInitScript(() => {
   class FakeRecognition {
@@ -45,7 +53,7 @@ await context.addInitScript(() => {
 });
 const page = await context.newPage();
 // optional langsamer Rechner wie im CI nachstellen: CPU_THROTTLE=6 node test/e2e.mjs
-if (process.env.CPU_THROTTLE) await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.CPU_THROTTLE) });
+if (process.env.CPU_THROTTLE && ENGINE === 'chromium') await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.CPU_THROTTLE) });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
@@ -325,4 +333,4 @@ await context.setOffline(false);
 
 assert.deepEqual(errors, [], `Keine JS-Fehler: ${errors.join(' | ')}`);
 await browser.close();
-console.log('E2E OK –', OUT);
+console.log(`E2E OK (${ENGINE}${process.env.LEGACY ? ', ältere Schnittstellen' : ''}) –`, OUT);
