@@ -1,0 +1,12 @@
+{
+  "name": "baustellen-protokoll",
+  "version": "0.1.0",
+  "description": "iPad-Web-App für Baubesprechungs- und Begehungsprotokolle",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "npx --yes http-server -c-1 -p 8080 .",
+    "test": "node --test test/*.test.js",
+    "e2e": "node test/e2e.mjs"
+  }
+}
