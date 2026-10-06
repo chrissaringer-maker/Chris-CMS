@@ -92,6 +92,41 @@ Faktenlage, keine Rechtsberatung. DE und AT wurden geprüft, weil das Land nicht
 
 **Mikrofon:** Ein Ansteckmikrofon mit Windschutz bringt bei Baustellenlärm mehr als jede Software (Headset ~12 % gegenüber ~17 % Wortfehlerrate mit Raummikrofon, englische Studie). Bei Variante B sprichst du nah am iPad, das reicht meist.
 
+## 5a. Beide Modi zusammen: Festhalten + Live-Mitschrift + Begriffsklärung
+
+Entscheidung (06.10.2026): **beide Modi**. „Festgehalten“ ist die verbindliche Quelle fürs Protokoll. Die Live-Mitschrift
+dient als Gedächtnisstütze, vor allem für **Fachbegriffe der Firmen**, die später geklärt oder recherchiert werden sollen.
+
+**Spracherkennung für die Live-Mitschrift: Azure AI Speech (Echtzeit) über den Browser.**
+- Laut Microsoft: Bei Echtzeit-Transkription wird das Audio **nur im Arbeitsspeicher des Servers verarbeitet, nichts gespeichert** („no data trace“). Das ist technisch genau Variante C. ([Microsoft Learn](https://learn.microsoft.com/azure/foundry/responsible-ai/speech-service/speech-to-text/data-privacy-security))
+- **Phrasenliste** (Firmen, Gewerke, Fachbegriffe) wird pro Sitzung mitgegeben. Laut Doku gibt es dafür kein festes Limit.
+- **Sprechertrennung** (Sprecher 1, 2, …) ist auch in Echtzeit verfügbar, standardmäßig aus. Die Stimmmerkmale werden laut Microsoft danach verworfen, eine Identifizierung findet nicht statt. Optional.
+- Microsoft ist als Auftragsverarbeiter über den bestehenden Microsoft-Vertrag (M365-Tenant vorhanden) abgedeckt. **Ein Azure-Abo mit Region EU ist nötig.** Kosten fallen pro Audiostunde an; den Preis im Azure-Preisrechner prüfen, nicht verifiziert.
+- Nicht genutzt wird die **Web Speech API von Safari**: Sie ist auf iOS laut Entwicklerberichten instabil (bricht ab, Zwischenergebnisse unzuverlässig) und kennt keine Phrasenliste. ([Apple-Forum](https://developer.apple.com/forums/thread/775699), [lilting.ch](https://lilting.ch/en/articles/ios-webspeech-api-tips))
+
+**Technische Grenzen der Web-App bei der Live-Mitschrift** (am iPad zu testen, nicht verifiziert):
+1. **Wechsel in eine andere App (z. B. Forma, um einen Plan anzusehen) oder Bildschirmsperre unterbricht das Mikrofon im Safari.** Ausweg: Safari und Forma nebeneinander (Split View / Fenster). Ob das Mikrofon dann weiterläuft, muss getestet werden.
+2. **Ein Mikrofon, zwei Nutzer:** Läuft die Live-Mitschrift, unterbricht die Diktiertaste der Tastatur sehr wahrscheinlich den Mikrofon-Stream. Darum wird „Festhalten“ im Live-Modus **ein Knopf in der App**: Er markiert den Abschnitt im laufenden Transkript als „Festgehalten“. Ohne Live-Modus bleibt es die Diktiertaste.
+3. **Kein Netz, keine Live-Mitschrift.** „Festhalten“ über die Diktiertaste funktioniert offline weiter.
+4. **Apple-Pencil-Doppeltipp ist für Web-Apps nicht zugänglich**, nur für native Apps. Der Auslöser ist ein großer Knopf auf dem Bildschirm.
+
+Wenn 1 im Praxistest scheitert, ist das **der** Grund für eine native App (Hintergrund-Audio, Erkennung auf dem Gerät), und dann braucht es einen Mac.
+
+### Ablauf Begriffsklärung
+1. **Während der Besprechung:** Du hörst einen unbekannten Begriff und tippst auf **„❓ Begriff“**. Die App merkt sich die Stelle und nimmt die letzten ~20 s und die nächsten ~10 s Transkript als Kontext. Optional schreibst du mit dem Pencil, was du gehört hast (Scribble), auch lautmalerisch („Kompri-Band?“).
+2. **Nach der Besprechung:** Liste „Zu klären“. Pro Begriff zeigt die App:
+   - erkannten Wortlaut, Kontext, Sprecher und Tagesordnungspunkt;
+   - einen KI-Vorschlag: vermutlich gemeinter Fachbegriff samt Schreibweise, Kurzbedeutung, Gewerk und „sicher / unsicher“;
+   - Aktionen: **geklärt** · **Rückfrage an Firma X** (fertiger Mailtext mit Kontext) · **recherchieren** (KI mit Websuche, nur mit Quellen; Normverweise gelten als Suchhinweis, nicht als Beleg).
+3. **Geklärte Begriffe** übernimmst du mit einem Tipp ins **Projekt-Glossar**. Ab der nächsten Besprechung stehen sie in der Phrasenliste der Spracherkennung und in der Nachkorrektur. **Das ist das „Lernen“:** nicht die Stimme, sondern dein Fachwortschatz, und zwar nachvollziehbar.
+
+**Ehrliche Grenze:** Genau seltene Fachbegriffe, von weiter weg gesprochen, erkennt jede Spracherkennung am schlechtesten. Oft kommt ein ähnlich klingendes Alltagswort heraus. Der Kontextsatz rettet die Deutung häufig, aber nicht immer. Die zuverlässigste Methode bleibt die direkte Rückfrage in der Besprechung („Wie schreibt man das?“); die landet dann ebenfalls im Transkript.
+
+**Aufbewahrung:**
+- Das vollständige Transkript wird gelöscht, sobald die Einwendungsfrist abgelaufen ist.
+- Begriffs-Ausschnitte bleiben, bis du den Begriff als geklärt markierst, höchstens 90 Tage (Wert anpassbar).
+- Zu Beginn der Besprechung gibt es eine Ansage. Ein **Pause-Knopf** ist jederzeit erreichbar, falls jemand nicht mitgeschrieben werden will.
+
 ## 6. Architektur v2: Web-App
 
 ```
@@ -106,6 +141,8 @@ Server (bestehender Stack dieses Repos: Node, Express, SQLite; Hosting in der EU
  ├─ Login (vorhanden, wird ausgebaut)
  ├─ Projekte, Teilnehmer, Firmen, Begriffsliste, Protokolle, offene Punkte
  ├─ KI-Strukturierung + Nachkorrektur (API-Schlüssel nur auf dem Server)
+ ├─ Live-Mitschrift: Kurzzeit-Token für Azure AI Speech (EU) ausgeben; Audio geht vom iPad direkt zu Azure, nicht über unseren Server
+ ├─ Begriffsklärung + Projekt-Glossar (speist Phrasenliste und Nachkorrektur)
  ├─ Prüfung ohne KI: Zahlen, Daten, Namen gegen den diktierten Text
  ├─ PDF-Erzeugung (Vorabzug / Endfassung)
  ├─ Forma-Anbindung (Phase 2): OAuth PKCE, Upload nach Files, Issues für Aufgaben
@@ -156,7 +193,7 @@ Bleibt in der **offiziellen Forma-App** (Daily-Log-Formular mit automatischem We
 | **0 – Ohne Code (diese Woche)** | Hub Admin → Subscriptions prüfen. Forma Meetings im iPad-Safari testen. Forma-App: Bautagebuch und Begehung je einmal mit Diktiertaste ausprobieren. Computer-Diktat-Tool identifizieren. 20 Fachbegriffe/Firmen als Kontakte anlegen. | 2–3 h | Klare Liste, was wirklich fehlt. Wenn Meetings im Safari genügen, schrumpft Phase 1 stark. |
 | **1 – Web-App MVP** | Projekte, Firmen, Teilnehmer, Protokoll mit Tagesordnungspunkten, Diktatfelder, offene Punkte übernehmen, Skizzenseite, Fotos, PDF (Vorabzug/Endfassung), Teilen. Kein Forma, keine KI. | 1–2 Wochen Sessions | Eine echte Baubesprechung damit protokolliert und versendet. |
 | **2 – Forma-Anbindung** | Custom Integration, OAuth, PDF nach Files, Aufgaben als Issues an Firmen, Issues der Begehung lesen. Vorher den Postman-Test (Kap. 9). | ~1 Woche | Protokoll liegt ohne Handarbeit in Forma. |
-| **3 – KI** | Strukturierung, Nachkorrektur mit Begriffsliste, Prüfung ohne KI, optional Live-Mitschrift (C). | ~1 Woche | Messen: Zeitersparnis gegenüber Fehlerquote an 5 echten Protokollen. |
+| **3 – KI + Live-Mitschrift** | Strukturierung, Nachkorrektur mit Glossar, Prüfung ohne KI. Live-Mitschrift über Azure (Kap. 5a) mit „❓ Begriff“ und Begriffsklärung. **Zuerst Praxistest:** Mikrofon bei Split View mit Forma, Diktiertaste neben laufendem Stream, LTE im Baucontainer. | ~1–2 Wochen | Wenn das Mikrofon beim App-Wechsel abbricht und Split View nicht reicht: Entscheidung native App (Mac nötig). |
 | **4 – Optional** | Versand über Microsoft Graph, Bautagebuch über Forms v2, Meetings-API (falls freigegeben), native App (falls Phase 1–3 Grenzen zeigen). | – | – |
 
 ## 9. Postman-Test vor Phase 2
@@ -180,6 +217,7 @@ Bleibt in der **offiziellen Forma-App** (Daily-Log-Formular mit automatischem We
 4. **Ein anonymisiertes Beispiel** deines heutigen Besprechungsprotokolls (PDF/Word): Danach richte ich PDF-Layout und Felder aus.
 5. **Deutschland oder Österreich?** Ändert das Ergebnis kaum, aber die Klausel zur Einwendungsfrist.
 6. **Entscheidung:** Web-App auf Basis dieses Repos (empfohlen) oder doch nativ, wenn ein Mac beschafft wird.
+7. **Azure:** Gibt es zu deinem Microsoft-365-Tenant schon ein Azure-Abo? Für die Live-Mitschrift wird eins gebraucht (Region EU).
 
 ## Quellen (Auswahl)
 
