@@ -12,7 +12,8 @@ und als PDF-Protokoll an die Firmen verschicken. Offene Punkte werden automatisc
 1. In **Safari** die App-Adresse öffnen: **https://chrissaringer-maker.github.io/Chris-CMS/**
 2. **Teilen → Mehr anzeigen → „Zum Home-Bildschirm“ → Hinzufügen.**
 3. **Ab jetzt nur noch die App vom Home-Bildschirm benutzen.** Safari und die installierte App speichern
-   getrennt – was du in Safari eingibst, siehst du in der App nicht.
+   getrennt – was du in Safari eingibst, siehst du in der App nicht. **Nie in einem privaten Safari-Tab:** Dort kann
+   die Safari-Engine keine Bilder speichern (im Test nachgewiesen); die App meldet dann „… wurde NICHT gespeichert“.
 4. Empfohlen: **Ausrichtungssperre** (Querformat) und in den iPad-Einstellungen unter „Gesten“ das Wischen aus
    der Ecke abschalten, damit beim Bedienen mit dem Daumen keine Schnellnotiz aufgeht.
 5. Einmal pro Woche **Sicherung** erstellen und in OneDrive oder „Dateien“ ablegen. Die App erinnert daran.
@@ -99,7 +100,10 @@ Frist und Text sind je Projekt unter **Projektdaten** änderbar. Keine Rechtsber
 - Die Liste der Leistungsgruppen ist nicht eingebaut (die amtliche LB-HB-Liste war nicht abrufbar).
 - PDF-Schrift: Buchstaben außerhalb Westeuropas werden auf die Grundform gebracht (Šimić → Simic).
 - Automatisch getestet (Querformat 1180 × 820) in Chromium, in WebKit (Engine von Safari) und ohne Schnittstellen,
-  die ältere iPads nicht haben. **Safari auf dem iPad (Diktat, Teilen, Pencil, Kamera) muss von Hand geprüft werden.**
+  die ältere iPads nicht haben. **Safari auf dem iPad (Diktat, Teilen, Pencil, Kamera, Offline-Start) muss von Hand
+  geprüft werden** – den Offline-Start kann das Testwerkzeug in WebKit nicht nachstellen.
+- Schlägt das Speichern eines Fotos oder einer Skizze fehl (Speicher voll, Bild nicht lesbar, privater Tab), meldet
+  die App „… wurde NICHT gespeichert: Ursache“. Das Bild ist dann nicht im Protokoll – erneut aufnehmen.
 
 ## Gerätetest „Feldtest 1“ (bitte je Punkt „ok“/„nicht ok“, bei Fehlern Bildschirmfoto)
 
