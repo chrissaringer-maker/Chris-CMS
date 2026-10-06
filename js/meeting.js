@@ -1,5 +1,5 @@
 // Ansicht einer Besprechung/Begehung: Kopf, Teilnehmer, Punkte (Diktat), Fotos/Skizzen, Abschluss und Versand.
-import { h, icon, mount, add, labeled, setTitle, toast, ask, confirmAsk, choose, shareFile, copyText, blobUrl, markSaved, pickFile, viewImage } from './ui.js';
+import { h, icon, mount, add, labeled, setRail, setTitle, toast, ask, confirmAsk, choose, shareFile, copyText, blobUrl, markSaved, pickFile, viewImage } from './ui.js';
 import * as store from './store.js';
 import {
   uid, meetingTitle, formatDate, isLocked, versionLabel, finalizeMeeting, reopenMeeting, addItem, itemsForMeeting,
@@ -7,9 +7,15 @@ import {
   defaultStatus, isOverdue, buildProtocol, companyDigests, mailtoUrl, distribution, fileSafe,
   ITEM_TYPES, STATUS, isoDate,
 } from './model.js';
-import { importPhoto, blobToDataUrl } from './images.js';
+import { importPhoto, toPdfImage } from './images.js';
 import { openSketch, BLANK_SIZE } from './sketch.js';
 import { buildPdf } from './pdf.js';
+import { dictationAvailable, startDictation } from './dictation.js';
+
+// Aktueller Punkt bleibt über ein Neuzeichnen der Ansicht hinweg erhalten.
+let remembered = { meetingId: null, itemId: null };
+let dictation = null; // laufendes Diktat { stop, itemId }
+let keyboardFallback = false; // true, wenn Safari die Spracherkennung verweigert hat
 
 // ---------- verzögertes Speichern (Tippen/Diktieren soll nicht bei jedem Zeichen schreiben) ----------
 const pending = new Map();
@@ -48,6 +54,9 @@ export async function renderMeeting(app, id) {
   const attById = new Map(bundle.attachments.map((a) => [a.id, a]));
   const locked = isLocked(meeting);
   const today = isoDate();
+  const cards = new Map(); // itemId → Karte und Zugriffe für die Daumenleiste
+  let currentId = null;
+  if (dictation) dictation.stop();
 
   setTitle(`${meetingTitle(meeting)} · ${formatDate(meeting.date)}`, `#/p/${project.id}`);
 
@@ -212,11 +221,14 @@ export async function renderMeeting(app, id) {
     const card = h('div', { class: `card item ${entry.status}`, id: `i-${item.id}` });
     const chips = h('span', { class: 'inline' });
     const refreshChips = () => {
-      mount(chips, 
+      mount(chips,
         isOverdue(entry, meeting.date) ? h('span', { class: 'chip overdue' }, 'überfällig') : null,
         entry.unclear ? h('span', { class: 'chip unclear' }, 'unklar') : null);
-      card.className = `card item ${entry.status}`;
+      card.className = `card item ${entry.status}${currentId === item.id ? ' current' : ''}`;
     };
+    // Antippen irgendwo in der Karte macht sie zum aktuellen Punkt (Ziel der Daumenleiste)
+    card.addEventListener('pointerdown', () => setCurrent(item.id));
+    card.addEventListener('focusin', () => setCurrent(item.id));
 
     const statusSel = select(Object.entries(STATUS), entry.status, (v) => {
       entry.status = v;
@@ -282,19 +294,24 @@ export async function renderMeeting(app, id) {
     }
 
     const textBlock = [];
+    let dictateField = null;
     if (isOwn) {
-      textBlock.push(locked
-        ? h('div', { class: 'basetext' }, item.text || '(ohne Text)')
-        : h('textarea', { class: 'dictate', value: item.text, placeholder: 'Festgehalten: … (Mikrofon-Taste der Tastatur zum Diktieren)',
-          oninput: (e) => { item.text = e.target.value; saveItemSoon(item); } }));
+      if (locked) textBlock.push(h('div', { class: 'basetext' }, item.text || '(ohne Text)'));
+      else {
+        dictateField = h('textarea', { class: 'dictate', value: item.text, placeholder: 'Festgehalten: … – Diktat über die Daumenleiste oder die Mikrofon-Taste der Tastatur',
+          oninput: (e) => { item.text = e.target.value; saveItemSoon(item); } });
+        textBlock.push(dictateField);
+      }
     } else {
       const meetingDate = new Map(bundle.meetings.map((m) => [m.id, m.date]));
       const idx = item.log.indexOf(entry);
       const history = item.log.slice(0, idx).filter((e) => e.note.trim());
       textBlock.push(h('div', { class: 'basetext' }, item.text || '(ohne Text)'));
       if (history.length) textBlock.push(h('ul', { class: 'history' }, history.map((e) => h('li', {}, `${formatDate(meetingDate.get(e.meetingId))}: ${e.note}`))));
-      textBlock.push(labeled(`Stand ${formatDate(meeting.date)}`, h('textarea', { class: 'dictate', value: entry.note, disabled: locked, placeholder: 'Fortschreibung: neuer Stand, Termin, Ergebnis …',
-        oninput: (e) => { entry.note = e.target.value; saveItemSoon(item); } })));
+      const noteField = h('textarea', { class: 'dictate', value: entry.note, disabled: locked, placeholder: 'Fortschreibung: neuer Stand, Termin, Ergebnis …',
+        oninput: (e) => { entry.note = e.target.value; saveItemSoon(item); } });
+      if (!locked) dictateField = noteField;
+      textBlock.push(labeled(`Stand ${formatDate(meeting.date)}`, noteField));
     }
 
     add(card, 
@@ -322,6 +339,15 @@ export async function renderMeeting(app, id) {
           rerender();
         } }, icon('trash'), 'Punkt löschen') : null));
     refreshChips();
+    cards.set(item.id, {
+      card, item, entry, field: dictateField, refresh: refreshChips,
+      setStatus(v) {
+        entry.status = v;
+        statusSel.value = v;
+        refreshChips();
+        saveItemSoon(item);
+      },
+    });
     return card;
   }
 
@@ -332,22 +358,153 @@ export async function renderMeeting(app, id) {
     ...sorted.filter((r) => r.item.createdMeetingId !== meeting.id),
     ...sorted.filter((r) => r.item.createdMeetingId === meeting.id).sort((a, b) => a.item.createdAt.localeCompare(b.item.createdAt)),
   ];
-  const emptyHint = h('p', { class: 'muted' }, 'Noch keine Punkte. Unten rechts „+ Punkt“ tippen, dann in das Feld diktieren.');
+  const emptyHint = h('p', { class: 'muted' }, 'Noch keine Punkte. In der Daumenleiste auf „Punkt“ tippen, dann „Diktat“.');
   const itemList = h('div', {}, rows.length ? rows.map(({ item, entry }) => itemCard(item, entry)) : emptyHint);
   const carried = rows.filter((r) => r.item.createdMeetingId !== meeting.id).length;
+  const pointsHeading = h('h2', {});
+  const updateCount = () => {
+    pointsHeading.textContent = `Punkte (${cards.size}${carried ? `, davon ${carried} fortgeschrieben` : ''})`;
+  };
+  updateCount();
 
-  const fab = locked ? null : h('button', { class: 'primary fab', onclick: () => {
-    // synchron, damit iOS die Tastatur öffnet
+  function setCurrent(id, { scroll = false } = {}) {
+    if (dictation && dictation.itemId !== id) stopDictation();
+    const prev = cards.get(currentId);
+    currentId = cards.has(id) ? id : null;
+    remembered = { meetingId: meeting.id, itemId: currentId };
+    prev?.refresh();
+    const now = cards.get(currentId);
+    now?.refresh();
+    if (scroll && now) now.card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    updateRail();
+  }
+
+  // Neuer Punkt; bei Tastatur-Diktat wird das Feld sofort fokussiert (öffnet die Tastatur)
+  function newItem({ focus = false } = {}) {
     const item = addItem({ meeting, items: bundle.items, type: 'aufgabe' });
     bundle.items.push(item);
     itemsById.set(item.id, item);
     emptyHint.remove();
-    const card = itemCard(item, item.log[0]);
-    itemList.append(card);
-    card.querySelector('textarea')?.focus();
-    card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    itemList.append(itemCard(item, item.log[0]));
+    updateCount();
+    setCurrent(item.id, { scroll: true });
+    if (focus) cards.get(item.id).field?.focus();
     store.saveItem(item).then(markSaved, (e) => toast(`Speichern fehlgeschlagen: ${e.message}`, 6000));
-  } }, icon('plus', 24), 'Punkt');
+    return item;
+  }
+
+  function stopDictation() {
+    dictation?.stop();
+  }
+
+  function toggleDictation() {
+    if (dictation) return stopDictation();
+    let target = cards.get(currentId);
+    if (!target?.field) target = cards.get(newItem({ focus: !dictationAvailable() || keyboardFallback }).id);
+    const field = target.field;
+    if (!dictationAvailable() || keyboardFallback) {
+      field.focus();
+      toast('Bitte die Mikrofon-Taste der Tastatur verwenden. Tipp: Tastatur mit zwei Fingern zusammenschieben und nach rechts ziehen.', 6000);
+      return;
+    }
+    const base = field.value;
+    const sep = base && !/\s$/.test(base) ? ' ' : '';
+    const write = (t) => {
+      field.value = t ? `${base}${sep}${t}` : base;
+      field.dispatchEvent(new Event('input'));
+    };
+    dictation = {
+      itemId: target.item.id,
+      ...startDictation({
+        lang: navigator.language?.startsWith('de') ? navigator.language : 'de-AT',
+        onText: write,
+        onEnd: (t) => {
+          write(t);
+          dictation = null;
+          flushPending();
+          updateRail();
+        },
+        onError: (msg, code) => {
+          toast(msg, 7000);
+          if (code === 'service-not-allowed' || code === 'not-allowed') keyboardFallback = true;
+        },
+      }),
+    };
+    target.card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    updateRail();
+  }
+
+  function step(dir) {
+    const ids = [...itemList.querySelectorAll('.item')].map((el) => el.id.slice(2));
+    if (!ids.length) return;
+    const i = ids.indexOf(currentId);
+    const next = i < 0 ? (dir > 0 ? 0 : ids.length - 1) : Math.min(ids.length - 1, Math.max(0, i + dir));
+    setCurrent(ids[next], { scroll: true });
+  }
+
+  function toggleDone() {
+    const c = cards.get(currentId);
+    if (!c) return toast('Zuerst einen Punkt antippen.');
+    c.setStatus(c.entry.status === 'erledigt' ? defaultStatus(c.item.type) : 'erledigt');
+    updateRail();
+  }
+
+  const targetOfCurrent = () => {
+    const c = cards.get(currentId);
+    return c ? { item: c.item, entry: c.entry } : { entry: null };
+  };
+
+  function updateRail() {
+    const c = cards.get(currentId);
+    const back = { icon: 'back', label: 'Zurück', href: `#/p/${project.id}` };
+    const nav = [
+      { icon: 'up', label: 'Vorher', aria: 'Vorheriger Punkt', pair: 'nav', onclick: () => step(-1) },
+      { icon: 'down', label: 'Weiter', aria: 'Nächster Punkt', pair: 'nav', onclick: () => step(1) },
+    ];
+    const more = { icon: 'more', label: 'Mehr', onclick: moreMenu };
+    if (locked) {
+      setRail([back, { icon: 'share', label: 'PDF', primary: true, onclick: () => makePdf(false).catch((e) => toast(e.message, 6000)) }, ...nav, more]);
+      return;
+    }
+    setRail([
+      back,
+      { icon: dictation ? 'stop' : 'mic', label: dictation ? 'Stopp' : 'Diktat', primary: !dictation, danger: !!dictation, active: !!dictation, id: 'rail-dictate', onclick: toggleDictation },
+      { icon: 'plus', label: 'Punkt', onclick: () => newItem({ focus: !dictationAvailable() || keyboardFallback }) },
+      { icon: 'camera', label: 'Foto', onclick: () => addPhotos(targetOfCurrent(), true) },
+      { icon: 'pen', label: 'Skizze', onclick: () => addSketch(targetOfCurrent()) },
+      ...nav,
+      { icon: 'check', label: c?.entry.status === 'erledigt' ? 'Wieder offen' : 'Erledigt', disabled: !c, onclick: toggleDone },
+      more,
+    ]);
+  }
+
+  async function moreMenu() {
+    const options = locked
+      ? [['share', `PDF teilen (${versionLabel(meeting)})`], ['copy', 'Verteiler kopieren'], ['mails', 'Mails „Ihre offenen Punkte“'], ['reopen', 'Neue Fassung anlegen'], ['top', 'Nach oben']]
+      : [['draft', 'Vorabzug-PDF'], ['final', 'Endfassung abschließen'], ['copy', 'Verteiler kopieren'], ['mails', 'Mails „Ihre offenen Punkte“'], ['library', 'Foto aus Mediathek'], ['top', 'Nach oben (Kopf, Teilnehmer)']];
+    const a = await choose('Weitere Aktionen', options);
+    try {
+      if (a === 'share') await makePdf(false);
+      if (a === 'draft') await makePdf(true);
+      if (a === 'final') await finalize();
+      if (a === 'reopen') await reopen();
+      if (a === 'library') await addPhotos(targetOfCurrent(), false);
+      if (a === 'top') window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (a === 'copy') {
+        const ok = await copyText(dist.map((d) => d.email).join('; '));
+        toast(ok ? `${dist.length} Adresse(n) kopiert.` : 'Kopieren nicht möglich.');
+      }
+      if (a === 'mails') {
+        if (!digests.length) return toast('Keine offenen Punkte mit zuständiger Firma.');
+        const id = await choose('Mail an Firma', digests.map((d) => [d.companyId, `${d.company} (${d.count}${d.overdue ? `, ${d.overdue} überfällig` : ''})`]));
+        const d = digests.find((x) => x.companyId === id);
+        if (d && !d.recipients.length) toast(`Für ${d.company} ist keine E-Mail hinterlegt.`);
+        else if (d) window.location.href = mailtoUrl(d.recipients, d.subject, d.body);
+      }
+    } catch (e) {
+      toast(e.message, 6000);
+    }
+  }
 
   // ---------- Abschluss & Versand ----------
   async function makePdf(draft) {
@@ -359,9 +516,10 @@ export async function renderMeeting(app, id) {
     for (const f of protocol.figures) {
       const a = attById.get(f.id);
       const blob = a && (a.rendered ?? a.original);
-      if (blob) images.set(f.id, { dataUrl: await blobToDataUrl(blob), width: a.width, height: a.height });
+      if (blob) images.set(f.id, await toPdfImage(blob));
     }
     const blob = await buildPdf(protocol, { draft, images });
+    if (blob.size > 20 * 1048576) toast(`Achtung: Das PDF ist ${(blob.size / 1048576).toFixed(0)} MB groß – für E-Mail eventuell zu groß. Weniger Fotos anhängen oder als Link versenden.`, 8000);
     const name = `${fileSafe(`${project.name}_${protocol.title}_${meeting.date}_${draft ? 'Vorabzug' : protocol.version}`)}.pdf`;
     const how = await shareFile(blob, name, `${protocol.title} vom ${protocol.date}`);
     if (how === 'downloaded') toast('PDF wurde heruntergeladen.');
@@ -445,11 +603,13 @@ export async function renderMeeting(app, id) {
     head,
     participants,
     general,
-    h('h2', {}, `Punkte (${rows.length}${carried ? `, davon ${carried} fortgeschrieben` : ''})`),
+    pointsHeading,
     itemList,
     h('h2', {}, 'Allgemeine Fotos und Skizzen'),
     h('div', { class: 'card' }, thumbs({ entry: null }), mediaButtons({ entry: null })),
     finish,
-    fab,
   );
+  // aktueller Punkt: der zuletzt bearbeitete, sonst der erste der Liste
+  const keep = remembered.meetingId === meeting.id && cards.has(remembered.itemId) ? remembered.itemId : null;
+  setCurrent(keep ?? itemList.querySelector('.item')?.id.slice(2) ?? null);
 }

@@ -20,7 +20,27 @@ mkdirSync(OUT, { recursive: true });
 const fixture = new URL('./fixture-photo.jpg', import.meta.url).pathname;
 
 const browser = await playwright.chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
-const context = await browser.newContext({ viewport: { width: 1024, height: 1366 }, hasTouch: true, acceptDownloads: true, locale: 'de-DE' });
+const context = await browser.newContext({ viewport: { width: 1180, height: 820 }, hasTouch: true, acceptDownloads: true, locale: 'de-AT' });
+// Spracherkennung von Safari nachbilden: liefert erst ein vorläufiges, dann ein endgültiges Ergebnis
+await context.addInitScript(() => {
+  class FakeRecognition {
+    start() {
+      this.running = true;
+      setTimeout(() => this.emit([['Kabeltrasse', false]]), 50);
+      setTimeout(() => this.emit([['Kabeltrasse nachrüsten', true]]), 120);
+    }
+    emit(list) {
+      if (!this.running) return;
+      const results = list.map(([t, fin]) => Object.assign([{ transcript: t }], { isFinal: fin }));
+      this.onresult?.({ resultIndex: 0, results });
+    }
+    stop() {
+      this.running = false;
+      setTimeout(() => this.onend?.(), 20);
+    }
+  }
+  window.SpeechRecognition = window.webkitSpeechRecognition = FakeRecognition;
+});
 const page = await context.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
@@ -57,13 +77,13 @@ for (const [firma, gewerk, lg, name, mail] of [
   ['Müller Bau GmbH', 'Baumeister', '7', 'Max Müller', 'max@mueller.example'],
   ['Trockenbau Huber', 'Trockenbau', '39', 'Eva Huber', 'eva@huber.example'],
 ]) {
-  await page.getByRole('button', { name: 'Firma', exact: true }).click();
+  await page.getByRole('button', { name: 'Firma hinzufügen' }).click();
   await fillModal({ Firma: firma, 'Gewerk (optional)': gewerk, 'Leistungsgruppe(n) (optional)': lg, 'Ansprechpartner (optional)': name, 'E-Mail (optional)': mail }, 'Hinzufügen');
 }
 assert.equal(await page.getByLabel('Leistungsgruppe(n)').first().inputValue(), '07');
 await shot('01-firmen');
 await page.locator('#back').click();
-await page.getByRole('button', { name: 'Baubesprechung', exact: true }).click();
+await page.getByRole('button', { name: 'Neue Baubesprechung' }).click();
 await page.getByRole('button', { name: 'Alle Firmen hinzufügen' }).click();
 
 // Punkt 1: Aufgabe für den Trockenbauer, Frist in der Vergangenheit (wird überfällig)
@@ -74,6 +94,14 @@ await card1.locator('textarea').fill('Brandschott Achse 3 herstellen, Material: 
 await card1.getByLabel('Zuständig').selectOption({ label: 'Trockenbau Huber' });
 assert.equal(await card1.locator('.item-no').textContent(), '39.001', 'Nummer folgt der LG der Firma');
 await card1.getByLabel('Frist').fill(isoOffset(-3));
+// Diktat über die Daumenleiste hängt an den Text des aktuellen Punkts an
+await page.getByRole('button', { name: 'Diktat' }).click();
+await page.getByRole('button', { name: 'Stopp' }).waitFor();
+await page.waitForTimeout(250);
+await page.getByRole('button', { name: 'Stopp' }).click();
+await page.getByRole('button', { name: 'Diktat' }).waitFor();
+assert.equal(await card1.locator('textarea').inputValue(), 'Brandschott Achse 3 herstellen, Material: Kompriband Kabeltrasse nachrüsten');
+await card1.locator('textarea').fill('Brandschott Achse 3 herstellen, Material: Kompriband');
 // Punkt 2: Info, unklar (allgemein, LG 00)
 await page.getByRole('button', { name: 'Punkt', exact: true }).click();
 const card2 = page.locator('.item').nth(1);
@@ -144,7 +172,7 @@ await shot('04-endfassung');
 
 // Zweite Besprechung: Punkt 39.001 wird fortgeschrieben, 00.001 (Info) nicht
 await page.locator('#back').click();
-await page.getByRole('button', { name: 'Baubesprechung', exact: true }).click();
+await page.getByRole('button', { name: 'Neue Baubesprechung' }).click();
 await page.locator('.item').first().waitFor();
 assert.equal(await page.locator('.item').count(), 1);
 assert.equal(await page.locator('.item .item-no').first().textContent(), '39.001');
@@ -178,12 +206,19 @@ await page.getByText('Offene Punkte (2)').waitFor();
 await shot('06-projekt');
 await page.goto(`${BASE}#/sicherung`);
 const backup = await download(() => page.getByRole('button', { name: 'Sicherung erstellen' }).click());
-const data = JSON.parse(readFileSync(backup, 'utf8'));
+// Format 2: Kopfzeile, Länge, JSON-Kopf, danach Bilder als Rohdaten
+const raw = readFileSync(backup);
+assert.equal(raw.subarray(0, 13).toString(), 'BPSICHERUNG2\n');
+const nl = raw.indexOf(10, 13);
+const len = Number(raw.subarray(13, nl).toString());
+const data = JSON.parse(raw.subarray(nl + 1, nl + 1 + len).toString('utf8'));
 assert.equal(data.projects.length, 1);
 assert.equal(data.meetings.length, 2);
 assert.equal(data.items.length, 3);
 assert.equal(data.attachments.length, 2);
-assert.ok(data.attachments.every((a) => typeof a.thumb === 'string' && a.thumb.startsWith('data:image/jpeg')));
+assert.ok(data.attachments.every((a) => a.blobs.thumb?.type === 'image/jpeg' && a.blobs.thumb.size > 0));
+const bytes = raw.length - (nl + 1 + len);
+assert.equal(bytes, data.attachments.reduce((n, a) => n + Object.values(a.blobs).reduce((m, b) => m + b.size, 0), 0), 'Bildbytes vollständig');
 
 // Wiederherstellen: alles löschen, Sicherung einspielen, Daten sind wieder da
 await page.evaluate(() => new Promise((res) => { const r = indexedDB.deleteDatabase('baustellen-protokoll'); r.onsuccess = r.onerror = r.onblocked = res; }));

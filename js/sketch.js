@@ -147,13 +147,16 @@ export async function openSketch({ background = null, width, height, strokes = [
   const cancelBtn = btn('Abbrechen', () => close(false));
 
   const root = h('div', { class: 'sketch', role: 'dialog', 'aria-label': title || 'Skizze' },
+    // Werkzeuge als senkrechte Spalte am Rand der Haltehand; „Fertig“ ganz unten am Daumen
     h('div', { class: 'tools' },
-      cancelBtn, h('span', { class: 'sep' }),
-      toolButtons.pen, toolButtons.marker, toolButtons.erase, h('span', { class: 'sep' }),
-      colorButtons, h('span', { class: 'sep' }), widthButtons, h('span', { class: 'sep' }),
-      undoBtn, redoBtn, gridBtn, fingerBtn, clearBtn, h('span', { class: 'spacer' }), doneBtn),
+      cancelBtn,
+      toolButtons.pen, toolButtons.marker, toolButtons.erase,
+      h('div', { class: 'tool-row swatches' }, colorButtons),
+      h('div', { class: 'tool-row' }, widthButtons),
+      h('div', { class: 'tool-row' }, undoBtn, redoBtn),
+      gridBtn, fingerBtn, clearBtn, h('span', { class: 'spacer' }), doneBtn),
     stage,
-    h('div', { class: 'hint' }, 'Mit dem Apple Pencil zeichnen. Sobald der Stift erkannt ist, zeichnen Finger nicht mehr (Handballen-Schutz) – umschaltbar oben.'));
+    h('div', { class: 'hint' }, 'Mit dem Apple Pencil zeichnen. Sobald der Stift erkannt ist, zeichnen Finger nicht mehr (Handballen-Schutz) – umschaltbar in der Werkzeugspalte.'));
   document.body.append(root);
   document.body.style.overflow = 'hidden';
 

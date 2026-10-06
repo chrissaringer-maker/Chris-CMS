@@ -4,11 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Baustellen-Protokoll</title>
-  <meta name="theme-color" content="#1c3454">
+  <meta name="theme-color" content="#f9f9f9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1c1c1e" media="(prefers-color-scheme: dark)">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Protokoll">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
@@ -23,6 +24,7 @@
     <span class="saved" id="saved" aria-live="polite"></span>
   </header>
   <main id="app"><p class="muted pad">Lädt …</p></main>
+  <nav id="rail" class="rail" aria-label="Aktionen"></nav>
   <div id="toast" role="status" aria-live="polite"></div>
   <noscript>Diese App braucht JavaScript.</noscript>
 </body>

@@ -66,3 +66,13 @@ export function blobToDataUrl(blob) {
     r.readAsDataURL(blob);
   });
 }
+
+// Fürs PDF verkleinern: 1600 px lange Seite reicht für A4-Druck; hält das PDF mailtauglich klein.
+export async function toPdfImage(blob, maxSide = 1600, quality = 0.72) {
+  const src = await decode(blob);
+  const [w, h] = fit(src.width, src.height, maxSide);
+  const canvas = drawToCanvas(src, w, h);
+  src.close?.();
+  const small = await canvasToBlob(canvas, 'image/jpeg', quality);
+  return { dataUrl: await blobToDataUrl(small), width: w, height: h };
+}

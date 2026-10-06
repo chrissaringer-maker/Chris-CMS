@@ -97,7 +97,7 @@ export function ask({ title, text = '', fields = [], ok = 'OK', cancel = 'Abbrec
     h('div', { class: 'actions' },
       h('button', { type: 'submit', class: danger ? 'danger' : 'primary' }, ok),
       cancel && h('button', { type: 'button', onclick: () => close(null) }, cancel)));
-    const backdrop = h('div', { class: 'modal-backdrop', onclick: (e) => e.target === backdrop && close(null) }, h('div', { class: 'modal' }, form));
+    const backdrop = h('div', { class: `modal-backdrop ${fields.length ? 'at-top' : 'at-thumb'}`, onclick: (e) => e.target === backdrop && close(null) }, h('div', { class: 'modal' }, form));
     document.body.append(backdrop);
     (Object.values(inputs)[0] ?? form.querySelector('button'))?.focus();
   });
@@ -173,7 +173,7 @@ export function choose(title, options) {
       backdrop.remove();
       resolve(v);
     };
-    const backdrop = h('div', { class: 'modal-backdrop', onclick: (e) => e.target === backdrop && close(null) },
+    const backdrop = h('div', { class: 'modal-backdrop at-thumb', onclick: (e) => e.target === backdrop && close(null) },
       h('div', { class: 'modal' },
         h('h3', {}, title),
         h('div', { class: 'actions', style: 'flex-direction:column;align-items:stretch' },
@@ -238,6 +238,13 @@ const ICONS = {
   hand: ['M8 12V5a1.5 1.5 0 0 1 3 0v6', 'M11 11V4a1.5 1.5 0 0 1 3 0v7', 'M14 11V6a1.5 1.5 0 0 1 3 0v8a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2-4a1.5 1.5 0 0 1 2.5-1.5L8 15'],
   users: ['M9 11a4 4 0 1 0 0-8a4 4 0 1 0 0 8z', 'M2 21v-2a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v2', 'M16 3.5a4 4 0 0 1 0 7', 'M22 21v-2a5 5 0 0 0-3.5-4.8'],
   settings: ['M4 6h10', 'M18 6h2', 'M14 4v4', 'M4 12h4', 'M12 12h8', 'M8 10v4', 'M4 18h12', 'M20 18h0', 'M16 16v4'],
+  mic: ['M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z', 'M5 11a7 7 0 0 0 14 0', 'M12 18v3'],
+  stop: ['M7 7h10v10H7z'],
+  up: ['M6 15l6-6 6 6'],
+  down: ['M6 9l6 6 6-6'],
+  back: ['M15 5l-7 7 7 7'],
+  check: ['M5 12l5 5 9-10'],
+  more: ['M4 11h2v2H4z', 'M11 11h2v2h-2z', 'M18 11h2v2h-2z'],
   building: ['M4 21V5l8-3v19', 'M12 21V9l8 3v9', 'M2 21h20', 'M7 8h2', 'M7 12h2', 'M7 16h2', 'M15 14h2', 'M15 18h2'],
 };
 
@@ -254,4 +261,56 @@ export function icon(name, size = 20) {
     svg.append(path);
   }
   return svg;
+}
+
+// ---------- Einstellungen der Bedienung (nur auf diesem Gerät) ----------
+const PREFS_KEY = 'bp-prefs';
+const PREF_DEFAULTS = { hand: 'rechts', rail: 'mitte' };
+export function getPrefs() {
+  try {
+    return { ...PREF_DEFAULTS, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') };
+  } catch {
+    return { ...PREF_DEFAULTS };
+  }
+}
+export function setPrefs(patch) {
+  const p = { ...getPrefs(), ...patch };
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(p));
+  } catch {
+    /* privater Modus: gilt nur bis zum Neuladen */
+  }
+  applyPrefs(p);
+  return p;
+}
+export function applyPrefs(p = getPrefs()) {
+  document.documentElement.dataset.hand = p.hand;
+  document.documentElement.dataset.rail = p.rail;
+}
+
+// ---------- Daumenleiste: senkrechte Aktionsleiste am Rand der Haltehand ----------
+// items: [{ icon, label, onclick | href, primary, danger, active, disabled, id, pair }]
+// Einträge mit gleichem `pair` stehen nebeneinander (z. B. ▲ ▼).
+export function setRail(items = []) {
+  const rail = document.getElementById('rail');
+  const make = (it) => {
+    const attrs = {
+      class: ['rail-btn', it.primary && 'primary', it.danger && 'danger', it.active && 'active'].filter(Boolean).join(' '),
+      id: it.id, 'aria-label': it.aria ?? it.label, disabled: it.disabled,
+    };
+    const body = [icon(it.icon, 26), h('span', { class: 'rail-label' }, it.label)];
+    return it.href ? h('a', { ...attrs, href: it.href }, body) : h('button', { ...attrs, type: 'button', onclick: it.onclick }, body);
+  };
+  const out = [];
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (!it) continue;
+    if (it.pair && items[i + 1]?.pair === it.pair) {
+      out.push(h('div', { class: 'rail-pair' }, make(it), make(items[i + 1])));
+      i++;
+    } else out.push(make(it));
+  }
+  mount(rail, out);
+  document.body.classList.toggle('has-rail', out.length > 0);
+  return rail;
 }

@@ -1,5 +1,5 @@
 // Einstieg: Router und die Ansichten Start, Projekt, Firmen, Projektdaten, Sicherung.
-import { h, icon, mount, add, labeled, setTitle, toast, ask, confirmAsk, shareFile, pickFile, releaseBlobUrls, markSaved } from './ui.js';
+import { h, icon, mount, add, labeled, setRail, getPrefs, setPrefs, applyPrefs, setTitle, toast, ask, confirmAsk, shareFile, pickFile, releaseBlobUrls, markSaved } from './ui.js';
 import * as store from './store.js';
 import { exportAll, importAll, backupAgeDays } from './backup.js';
 import {
@@ -22,6 +22,8 @@ const routes = [
 async function route() {
   await flushPending();
   releaseBlobUrls();
+  setRail([]);
+  window.scrollTo(0, 0);
   const hash = location.hash || '#/';
   for (const [re, view] of routes) {
     const m = re.exec(hash);
@@ -64,17 +66,18 @@ async function renderHome() {
       h('a', { href: '#/sicherung' }, 'Jetzt sichern')));
   }
 
-  mount(app, 
+  setRail([
+    { icon: 'plus', label: 'Projekt', aria: 'Neues Projekt', primary: true, onclick: createProject },
+    { icon: 'settings', label: 'Sicherung', aria: 'Sicherung und Einstellungen', href: '#/sicherung' },
+  ]);
+  mount(app,
     ...banners,
-    h('div', { class: 'actions' },
-      h('button', { class: 'primary', onclick: createProject }, icon('plus'), 'Neues Projekt'),
-      h('a', { class: 'btn', href: '#/sicherung' }, icon('download'), 'Sicherung')),
     projects.length
       ? h('ul', { class: 'list' }, projects.map((p) => h('li', {},
         h('a', { class: 'row', href: `#/p/${p.id}` },
           h('div', { class: 'grow' }, h('strong', {}, p.name), h('div', { class: 'sub' }, p.address || 'ohne Adresse')),
           h('span', { class: 'sub mono' }, '›')))))
-      : h('p', { class: 'muted pad' }, 'Noch keine Projekte. Lege zuerst ein Projekt (Bauvorhaben) an, dann die Firmen und deine erste Besprechung.'),
+      : h('p', { class: 'muted pad' }, 'Noch keine Projekte. Rechts in der Daumenleiste „Projekt“ tippen, dann Firmen und die erste Besprechung anlegen.'),
   );
 }
 
@@ -130,12 +133,14 @@ async function renderProject(id) {
     }));
   };
 
-  mount(app, 
-    h('div', { class: 'actions' },
-      h('button', { class: 'primary', onclick: () => start('besprechung') }, icon('plus'), 'Baubesprechung'),
-      h('button', { class: 'primary', onclick: () => start('begehung') }, icon('plus'), 'Baubegehung'),
-      h('a', { class: 'btn', href: `#/p/${id}/firmen` }, icon('building'), `Firmen (${project.companies.length})`),
-      h('a', { class: 'btn', href: `#/p/${id}/daten` }, icon('settings'), 'Projektdaten')),
+  setRail([
+    { icon: 'back', label: 'Zurück', href: '#/' },
+    { icon: 'plus', label: 'Besprechung', aria: 'Neue Baubesprechung', primary: true, onclick: () => start('besprechung') },
+    { icon: 'plus', label: 'Begehung', aria: 'Neue Baubegehung', primary: true, onclick: () => start('begehung') },
+    { icon: 'building', label: `Firmen (${project.companies.length})`, aria: 'Firmen und Kontakte', href: `#/p/${id}/firmen` },
+    { icon: 'settings', label: 'Projekt', aria: 'Projektdaten', href: `#/p/${id}/daten` },
+  ]);
+  mount(app,
     h('h2', {}, MEETING_TYPES.besprechung.label + 'en'),
     meetingList('besprechung'),
     h('h2', {}, MEETING_TYPES.begehung.label + 'en'),
@@ -198,8 +203,11 @@ async function renderCompanies(id) {
         rerender();
       } }, icon('trash'), 'Löschen')));
 
-  mount(app, 
-    h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: addCompany }, icon('plus'), 'Firma')),
+  setRail([
+    { icon: 'back', label: 'Zurück', href: `#/p/${id}` },
+    { icon: 'plus', label: 'Firma', aria: 'Firma hinzufügen', primary: true, onclick: addCompany },
+  ]);
+  mount(app,
     h('p', { class: 'muted small' }, 'Die Kontakte mit E-Mail bilden den Verteiler. Die Leistungsgruppe (LB-HB) bestimmt die Nummer der Punkte: Wählst du bei einem Punkt die Firma, bekommt er die Nummer ihrer LG (z. B. 39.001). Allgemeine Punkte laufen unter LG 00.'),
     project.companies.map((c) => h('div', { class: 'card' },
       h('div', { class: 'grid' },
@@ -241,7 +249,8 @@ async function renderProjectSettings(id) {
       },
     })));
 
-  mount(app, 
+  setRail([{ icon: 'back', label: 'Zurück', href: `#/p/${id}` }]);
+  mount(app,
     h('div', { class: 'card' },
       field('name', 'Bauvorhaben'),
       field('address', 'Adresse'),
@@ -282,7 +291,20 @@ async function renderBackup() {
   const persisted = await navigator.storage?.persisted?.();
   const mb = (n) => `${(n / 1024 / 1024).toFixed(1)} MB`;
 
-  mount(app, 
+  setRail([{ icon: 'back', label: 'Zurück', href: '#/' }]);
+  const prefs = getPrefs();
+  const prefSelect = (key, label, options) => labeled(label, (() => {
+    const s = h('select', { onchange: (e) => setPrefs({ [key]: e.target.value }) }, options.map(([v, l]) => h('option', { value: v }, l)));
+    s.value = prefs[key];
+    return s;
+  })());
+  mount(app,
+    h('div', { class: 'card' },
+      h('h3', {}, 'Bedienung'),
+      h('p', { class: 'muted small' }, 'Die Daumenleiste mit allen Aktionen steht am Rand der Hand, mit der du das iPad hältst. Gilt nur für dieses Gerät.'),
+      h('div', { class: 'grid' },
+        h('div', {}, prefSelect('hand', 'Daumenleiste', [['rechts', 'rechts (rechte Hand)'], ['links', 'links (linke Hand)']])),
+        h('div', {}, prefSelect('rail', 'Position der Knöpfe', [['mitte', 'Mitte des Randes'], ['unten', 'unten am Rand']])))),
     h('div', { class: 'card' },
       h('h3', {}, 'Daten sichern'),
       h('p', {}, 'Alle Projekte, Protokolle und Bilder liegen nur auf diesem Gerät. Die Sicherung ist eine einzelne Datei – speichere sie z. B. in OneDrive oder „Dateien“.'),
@@ -291,7 +313,7 @@ async function renderBackup() {
         e.target.disabled = true;
         try {
           const blob = await exportAll();
-          await shareFile(blob, `baustellen-protokoll-sicherung-${isoDate()}.json`, 'Sicherung Baustellen-Protokoll');
+          await shareFile(blob, `baustellen-protokoll-sicherung-${isoDate()}.bpsicherung`, 'Sicherung Baustellen-Protokoll');
           toast('Sicherung erstellt.');
         } finally {
           e.target.disabled = false;
@@ -301,7 +323,7 @@ async function renderBackup() {
       h('h3', {}, 'Wiederherstellen'),
       h('p', {}, 'Ersetzt ALLE Daten auf diesem Gerät durch den Stand der Sicherungsdatei.'),
       h('button', { class: 'danger', onclick: async () => {
-        const [file] = await pickFile({ accept: 'application/json,.json' });
+        const [file] = await pickFile({ accept: '.bpsicherung,.json,application/json,application/octet-stream' });
         if (!file) return;
         if (!(await confirmAsk('Alle Daten ersetzen?', `Datei: ${file.name}`, 'Ersetzen', true))) return;
         try {
@@ -325,4 +347,5 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Service Worker:', e));
 }
 navigator.storage?.persist?.().catch(() => {});
+applyPrefs();
 route();
