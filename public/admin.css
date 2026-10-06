@@ -1,0 +1,25 @@
+:root{color-scheme:light dark;--bg:#fff;--fg:#1b1b1f;--muted:#6b6b76;--line:#d8d8e0;--accent:#2457d6;--danger:#c0392b}
+@media (prefers-color-scheme:dark){:root{--bg:#16161a;--fg:#ececf1;--muted:#9a9aa6;--line:#33333c;--accent:#6c93ff;--danger:#ff6b5b}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.5 system-ui,-apple-system,sans-serif}
+header{display:flex;gap:1rem;align-items:center;padding:.75rem 1rem;border-bottom:1px solid var(--line)}
+header span{color:var(--muted);flex:1}
+main{max-width:44rem;margin:0 auto;padding:1rem}
+label{display:block;margin:.9rem 0;font-weight:600}
+label small{font-weight:400;color:var(--muted)}
+label.check{display:flex;gap:.6rem;align-items:center}
+input,textarea{display:block;width:100%;margin-top:.3rem;padding:.7rem;font:inherit;color:inherit;background:transparent;border:1px solid var(--line);border-radius:8px}
+input[type=checkbox]{width:1.4rem;height:1.4rem;margin:0}
+/* >=44px Touch-Ziele fürs iPad; 16px+ Schrift verhindert Auto-Zoom in Safari */
+button{min-height:44px;padding:.5rem 1.1rem;font:inherit;font-weight:600;color:#fff;background:var(--accent);border:0;border-radius:8px;cursor:pointer}
+button.secondary{background:transparent;color:var(--fg);border:1px solid var(--line)}
+button.danger{background:var(--danger);margin-left:auto}
+.row{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
+.row h2{flex:1;margin:0}
+ul{list-style:none;padding:0}
+li{display:flex;gap:.6rem;align-items:center;padding:.9rem .4rem;min-height:48px;border-bottom:1px solid var(--line);cursor:pointer}
+li .t{flex:1}
+li .badge{font-size:.8rem;padding:.1rem .5rem;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+li .badge.live{color:var(--accent);border-color:var(--accent)}
+#msg{min-height:1.5rem;color:var(--danger)}
+#msg.ok{color:var(--accent)}

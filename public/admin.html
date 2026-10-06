@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CMS Admin</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+<header><strong>CMS Admin</strong><span id="who"></span><button id="logout" hidden>Abmelden</button></header>
+<main>
+  <p id="msg" role="status"></p>
+
+  <form id="login" hidden>
+    <h2>Anmelden</h2>
+    <label>Benutzer <input name="username" autocomplete="username" autocapitalize="none" required></label>
+    <label>Passwort <input name="password" type="password" autocomplete="current-password" required></label>
+    <button type="submit">Anmelden</button>
+  </form>
+
+  <section id="list" hidden>
+    <div class="row"><h2>Seiten</h2><button id="new">+ Neue Seite</button></div>
+    <ul id="pages"></ul>
+  </section>
+
+  <form id="edit" hidden>
+    <h2 id="edit-title">Seite</h2>
+    <label>Titel <input name="title" required maxlength="200"></label>
+    <label>Slug (URL: /p/&lt;slug&gt;) <input name="slug" required pattern="[a-z0-9]+(-[a-z0-9]+)*" autocapitalize="none"></label>
+    <label>Inhalt <small>(# Überschrift, ## Unterüberschrift, Leerzeile = neuer Absatz)</small>
+      <textarea name="content" rows="14"></textarea></label>
+    <label class="check"><input name="published" type="checkbox"> Veröffentlicht</label>
+    <div class="row">
+      <button type="submit">Speichern</button>
+      <button type="button" id="cancel" class="secondary">Zurück</button>
+      <button type="button" id="delete" class="danger" hidden>Löschen</button>
+    </div>
+  </form>
+</main>
+<script src="admin.js" type="module"></script>
+</body>
+</html>

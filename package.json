@@ -1,0 +1,16 @@
+{
+  "name": "chris-cms",
+  "version": "0.1.0",
+  "description": "Schlankes CMS: Seiten verwalten, im Browser bedienbar (auch iPad)",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
