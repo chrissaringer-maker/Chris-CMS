@@ -5,6 +5,7 @@ import { execSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import assert from 'node:assert/strict';
+import util from 'node:util';
 
 const require = createRequire(import.meta.url);
 let playwright;
@@ -43,6 +44,8 @@ await context.addInitScript(() => {
   window.SpeechRecognition = window.webkitSpeechRecognition = FakeRecognition;
 });
 const page = await context.newPage();
+// optional langsamer Rechner wie im CI nachstellen: CPU_THROTTLE=6 node test/e2e.mjs
+if (process.env.CPU_THROTTLE) await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.CPU_THROTTLE) });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
@@ -67,6 +70,16 @@ async function download(trigger) {
   return path;
 }
 const pdfText = (path) => execSync(`pdftotext -layout "${path}" -`).toString();
+// Die Ansicht wird nach dem Speichern asynchron neu aufgebaut: wiederholt lesen, bis der Wert stimmt (höchstens 5 s)
+async function eventually(read, expected, msg) {
+  const end = Date.now() + 5000;
+  let actual = await read();
+  while (!util.isDeepStrictEqual(actual, expected) && Date.now() < end) {
+    await page.waitForTimeout(50);
+    actual = await read();
+  }
+  assert.deepEqual(actual, expected, msg);
+}
 const isoOffset = (days) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
 
 process.on('uncaughtException', async (e) => {
@@ -95,11 +108,11 @@ await page.getByRole('button', { name: 'Neue Baubesprechung' }).click();
 await page.getByRole('button', { name: 'Alle Firmen hinzufügen' }).click();
 // Anwesenheit beginnt offen; Tipp schaltet weiter: anwesend → entschuldigt
 const att = page.locator('button.attend');
-assert.deepEqual(await att.allTextContents(), ['offen', 'offen']);
+await eventually(() => att.allTextContents(), ['offen', 'offen']);
 await att.nth(0).click();
 await att.nth(1).click();
 await att.nth(1).click();
-assert.deepEqual(await att.allTextContents(), ['anwesend', 'entschuldigt']);
+await eventually(() => att.allTextContents(), ['anwesend', 'entschuldigt']);
 // Knopffeld unten rechts: Knöpfe ≥ 80 px hoch, ganz in den unteren 420 px und rechten 220 px
 const boxes = await page.locator('#rail .rail-btn').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().toJSON()));
 assert.ok(boxes.length >= 7, 'Knopffeld vollständig');
@@ -223,8 +236,8 @@ await page.locator('#back').click();
 await page.getByRole('button', { name: 'Neue Baubesprechung' }).click();
 // Vorsitzung ist abgeschlossen → keine Warnung; Teilnehmer übernommen, Anwesenheit offen
 await page.locator('.item').first().waitFor();
-assert.deepEqual(await page.locator('.item .item-no').allTextContents(), ['00.001', '39.001']);
-assert.deepEqual(await page.locator('button.attend').allTextContents(), ['offen', 'offen']);
+await eventually(() => page.locator('.item .item-no').allTextContents(), ['00.001', '39.001']);
+await eventually(() => page.locator('button.attend').allTextContents(), ['offen', 'offen']);
 const p39 = page.locator('.item', { has: page.locator('.item-no', { hasText: '39.001' }) });
 assert.equal(await p39.getByLabel('Leistungsgruppe').count(), 0, 'fortgeschriebene Nummer ist fest');
 await p39.locator('textarea').fill('Material geliefert, Einbau KW 43');
@@ -243,7 +256,7 @@ await page.reload();
 await page.locator('.item').first().waitFor();
 assert.equal(await p39.locator('textarea').inputValue(), 'Material geliefert, Einbau KW 43');
 assert.equal(await page.locator('.item').nth(2).locator('textarea').inputValue(), 'Neuer Punkt in Sitzung 2');
-assert.deepEqual(await page.locator('.item .item-no').allTextContents(), ['00.001', '39.001', '07.001'], 'fortgeschrieben zuerst, dann neue in Erfassungsreihenfolge');
+await eventually(() => page.locator('.item .item-no').allTextContents(), ['00.001', '39.001', '07.001'], 'fortgeschrieben zuerst, dann neue in Erfassungsreihenfolge');
 const pdf2 = await download(() => page.getByRole('button', { name: 'Vorabzug-PDF' }).click());
 const text2 = pdfText(pdf2);
 writeFileSync(join(OUT, 'vorabzug-2.txt'), text2);
@@ -282,7 +295,7 @@ await page.getByRole('link', { name: /BV Musterstraße 12/ }).click();
 await page.getByText('Offene Punkte (2)').waitFor();
 await page.getByRole('link', { name: /Baubesprechung Nr. 1/ }).click();
 await page.locator('.item .thumb img').first().waitFor();
-assert.equal(await page.locator('.item .thumb').count(), 2, 'Bilder nach Wiederherstellung vorhanden');
+await eventually(() => page.locator('.item .thumb').count(), 2, 'Bilder nach Wiederherstellung vorhanden');
 
 // Datenbank-Verbindung verloren (wie nach langem Hintergrund in Safari): nächste Eingabe wird trotzdem gespeichert
 await page.locator('#back').click();

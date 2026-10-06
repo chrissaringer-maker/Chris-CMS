@@ -129,6 +129,7 @@ Verbindungsverlust), offline über Service Worker mit festen Versionen, PDF mit
 npm test                                  # Fachlogik (node:test)
 npx http-server -c-1 -p 8080 . &          # lokaler Server
 node test/e2e.mjs test-output             # Browser-Durchlauf (Querformat) mit Playwright (braucht pdftotext)
+CPU_THROTTLE=6 node test/e2e.mjs test-output   # dasselbe auf gedrosselter CPU (deckt Wettläufe auf wie im CI)
 node test/stress.mjs test-output          # Stresstest: 30 Sitzungen, ~600 Punkte, 40 große Fotos
 ```
 
