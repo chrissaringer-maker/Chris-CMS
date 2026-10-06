@@ -18,12 +18,18 @@ function loadJsPDF() {
 }
 
 // Die Standardschrift im PDF kennt nur westeuropäische Zeichen (Umlaute und ß gehen).
-const REPLACE = { '–': '-', '—': '-', '„': '"', '“': '"', '”': '"', '‚': "'", '‘': "'", '’': "'", '…': '...', '•': '-', '€': 'EUR', ' ': ' ' };
+// Andere Buchstaben werden auf ihre Grundform gebracht (Šimić → Simic, Đorđević → Djordjevic), statt zu verschwinden.
+const REPLACE = {
+  '–': '-', '—': '-', '„': '"', '“': '"', '”': '"', '‚': "'", '‘': "'", '’': "'",
+  '…': '...', '•': '-', '€': 'EUR', ' ': ' ',
+  'Đ': 'Dj', 'đ': 'dj', 'Ł': 'L', 'ł': 'l', 'Œ': 'OE', 'œ': 'oe', 'ı': 'i',
+};
+const SPECIAL = new RegExp(`[${Object.keys(REPLACE).join('')}]`, 'g');
 export function clean(s) {
   return String(s ?? '')
     .normalize('NFC')
-    .replace(/[–—„“”‚‘’…•€ ]/g, (c) => REPLACE[c])
-    .replace(/[^\n\x20-\x7e\xa0-\xff]/g, '');
+    .replace(SPECIAL, (c) => REPLACE[c])
+    .replace(/[^\n\x20-\x7e\xa0-\xff]/g, (c) => c.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\n\x20-\x7e\xa0-\xff]/g, ''));
 }
 
 const PAGE = { w: 210, h: 297, l: 15, r: 15, t: 22, b: 18 };
@@ -104,6 +110,7 @@ export async function buildPdf(p, { draft, images = new Map() }) {
     ['Ort', p.location],
     ['Verfasser', p.author],
     ['Fassung', draft ? 'Vorabzug' : p.version],
+    ['Ersetzt', draft ? '' : p.supersedes],
     ['Nächster Termin', p.nextDate],
   ].filter(([, v]) => v);
   for (const [k, v] of facts) {
@@ -118,7 +125,7 @@ export async function buildPdf(p, { draft, images = new Map() }) {
   // ---------- Teilnehmer ----------
   if (p.participants.length) {
     heading('Teilnehmer');
-    const cols = [{ w: 80, t: 'Firma' }, { w: 75, t: 'Name' }, { w: 25, t: 'anwesend' }];
+    const cols = [{ w: 76, t: 'Firma' }, { w: 70, t: 'Name' }, { w: 34, t: 'Anwesenheit' }];
     const row = (vals, bold) => {
       font(9.5, bold ? 'bold' : 'normal', bold ? MUTED : INK);
       const cells = vals.map((v, i) => lines(v, cols[i].w - 2));
@@ -132,7 +139,7 @@ export async function buildPdf(p, { draft, images = new Map() }) {
       y += hgt;
     };
     row(cols.map((c) => c.t), true);
-    for (const t of p.participants) row([t.company, t.name, t.present ? 'ja' : 'nein'], false);
+    for (const t of p.participants) row([t.company, t.name, t.attendance], false);
   }
 
   if (p.distribution.length) {
@@ -267,7 +274,7 @@ export async function buildPdf(p, { draft, images = new Map() }) {
   const figs = p.figures.filter((f) => images.has(f.id));
   if (figs.length) {
     newPage();
-    heading('Anlagen');
+    heading('Beilagen');
     for (const f of figs) {
       const img = images.get(f.id);
       const maxW = CW;

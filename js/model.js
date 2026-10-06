@@ -15,8 +15,25 @@ export const ITEM_TYPES = {
   aufgabe: 'Aufgabe',
   mangel: 'Mangel',
   festlegung: 'Festlegung',
-  info: 'Info',
+  info: 'Information',
 };
+
+// Anwesenheit: anfangs offen, damit nichts ungeprüft als „anwesend“ im Protokoll steht.
+export const ATTENDANCE = {
+  '': 'offen',
+  anwesend: 'anwesend',
+  entschuldigt: 'entschuldigt',
+  fehlt: 'nicht erschienen',
+};
+export const ATTENDANCE_CYCLE = ['', 'anwesend', 'entschuldigt', 'fehlt'];
+
+// Altdaten (present: true/false) auf die drei Stufen abbilden
+export function attendanceOf(p) {
+  if (typeof p.attendance === 'string') return p.attendance;
+  if (p.present === true) return 'anwesend';
+  if (p.present === false) return 'fehlt';
+  return '';
+}
 
 export const STATUS = {
   offen: 'offen',
@@ -114,8 +131,13 @@ export function distribution(project) {
   return list;
 }
 
+// Altprojekte aus der ersten Version (5 Werktage, deutscher Wortlaut) auf den österreichischen Standard heben
+const OLD_DEFAULT_TEXT = 'Einwendungen gegen dieses Protokoll sind binnen {tage} Werktagen nach Erhalt schriftlich an den Verfasser zu richten. Andernfalls gilt das Protokoll als genehmigt.';
 export function objectionClause(project) {
-  return (project.objectionText || DEFAULT_OBJECTION_TEXT).replace('{tage}', String(project.objectionDays ?? 5));
+  const legacy = !project.objectionText || project.objectionText === OLD_DEFAULT_TEXT;
+  const text = legacy ? DEFAULT_OBJECTION_TEXT : project.objectionText;
+  const days = legacy && project.objectionDays === 5 ? DEFAULT_OBJECTION_DAYS : project.objectionDays ?? DEFAULT_OBJECTION_DAYS;
+  return text.replace('{tage}', String(days));
 }
 
 // ---------- Besprechung / Begehung ----------
@@ -143,7 +165,7 @@ export function createMeeting({ project, meetings, items, type, date = isoDate()
     location: prev?.location ?? project.address ?? '',
     nextDate: '',
     generalNotes: '',
-    participants: (prev?.participants ?? []).map((p) => ({ ...p, present: true })),
+    participants: (prev?.participants ?? []).map(({ present, attendance, ...p }) => ({ ...p, attendance: '' })),
     attachmentIds: [],
     status: 'entwurf',
     finals: [],
@@ -169,10 +191,12 @@ export function carryOver({ meetings, items, meeting }) {
       .filter(({ n }) => n !== undefined && n < meeting.number)
       .sort((x, y) => x.n - y.n);
     const last = before.at(-1)?.e;
-    if (!last || last.status !== 'offen') continue;
+    // fortgeschrieben wird, was offen ist – und was noch als „unklar“ markiert ist (auch Informationen)
+    const closed = last?.status === 'erledigt' || last?.status === 'entfallen';
+    if (!last || closed || (last.status !== 'offen' && !last.unclear)) continue;
     out.push({
       ...item,
-      log: [...item.log, { meetingId: meeting.id, note: '', companyId: last.companyId, due: last.due, status: 'offen', unclear: last.unclear, attachmentIds: [] }],
+      log: [...item.log, { meetingId: meeting.id, note: '', companyId: last.companyId, due: last.due, status: last.status, unclear: last.unclear, attachmentIds: [] }],
     });
   }
   return out;
@@ -371,7 +395,7 @@ export function buildProtocol({ project, meeting, meetings, items, attachments =
     participants: meeting.participants.map((p) => ({
       company: companyName(project, p.companyId),
       name: p.name,
-      present: p.present !== false,
+      attendance: ATTENDANCE[attendanceOf(p)],
     })),
     distribution: distribution(project),
     sections,
@@ -405,7 +429,7 @@ export function companyDigests({ project, meeting, items, refDate = isoDate() })
       return parts.join(' – ');
     };
     const block = (title, list) => (list.length ? [title, ...list.map(line), ''] : []);
-    const recipients = company.contacts.filter((k) => k.email).map((k) => k.email);
+    const recipients = company.contacts.filter((k) => k.email && k.inDistribution !== false).map((k) => k.email);
     const date = formatDate(meeting.date);
     const subject = `${project.name} – ${meetingTitle(meeting)} vom ${date} – Ihre offenen Punkte (${company.name})`;
     const body = [
@@ -427,7 +451,8 @@ export function companyDigests({ project, meeting, items, refDate = isoDate() })
 }
 
 export function mailtoUrl(recipients, subject, body) {
-  const to = recipients.map(encodeURIComponent).join(',');
+  // „@“ bleibt lesbar (manche Mail-Apps erkennen kodierte Adressen nicht)
+  const to = recipients.map((r) => encodeURIComponent(r).replace(/%40/g, '@')).join(',');
   return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 

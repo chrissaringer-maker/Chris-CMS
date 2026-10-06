@@ -93,9 +93,26 @@ await shot('01-firmen');
 await page.locator('#back').click();
 await page.getByRole('button', { name: 'Neue Baubesprechung' }).click();
 await page.getByRole('button', { name: 'Alle Firmen hinzufügen' }).click();
+// Anwesenheit beginnt offen; Tipp schaltet weiter: anwesend → entschuldigt
+const att = page.locator('button.attend');
+assert.deepEqual(await att.allTextContents(), ['offen', 'offen']);
+await att.nth(0).click();
+await att.nth(1).click();
+await att.nth(1).click();
+assert.deepEqual(await att.allTextContents(), ['anwesend', 'entschuldigt']);
+// Knopffeld unten rechts: Knöpfe ≥ 80 px hoch, ganz in den unteren 420 px und rechten 220 px
+const boxes = await page.locator('#rail .rail-btn').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().toJSON()));
+assert.ok(boxes.length >= 7, 'Knopffeld vollständig');
+for (const b of boxes) {
+  assert.ok(b.height >= 80, `Knopfhöhe ${b.height}`);
+  assert.ok(b.top >= 820 - 420 && b.left >= 1180 - 220, `Knopf außerhalb des Daumenbereichs: ${JSON.stringify(b)}`);
+}
+const dictateBox = boxes.at(-1);
+assert.ok(dictateBox.height >= 96 && dictateBox.bottom > 820 - 40, 'Diktat breit ganz unten');
+assert.equal(await page.locator('#rail').getByText('Zurück').count(), 0, 'Zurück nicht im Knopffeld');
 
 // Punkt 1: Aufgabe für den Trockenbauer, Frist in der Vergangenheit (wird überfällig)
-await page.getByRole('button', { name: 'Punkt', exact: true }).click();
+await page.getByRole('button', { name: 'Neuer Punkt' }).click();
 const card1 = page.locator('.item').nth(0);
 assert.equal(await card1.locator('.item-no').textContent(), '00.001');
 // Regression: ein laufendes Diktat endet beim Verlassen der Ansicht und schreibt nichts mehr nach
@@ -129,7 +146,7 @@ await card1.locator('textarea').waitFor();
 assert.ok(!(await card1.locator('textarea').inputValue()).includes('SPÄTER'), 'kein Nachschreiben nach Zurück');
 await card1.locator('textarea').fill('Brandschott Achse 3 herstellen, Material: Kompriband');
 // Punkt 2: Info, unklar (allgemein, LG 00)
-await page.getByRole('button', { name: 'Punkt', exact: true }).click();
+await page.getByRole('button', { name: 'Neuer Punkt' }).click();
 const card2 = page.locator('.item').nth(1);
 await card2.getByLabel('Art').selectOption('info');
 await card2.locator('textarea').fill('Baustrom wird ab nächster Woche umgestellt');
@@ -171,19 +188,24 @@ await shot('03-besprechung');
 const draftPdf = await download(() => page.getByRole('button', { name: 'Vorabzug-PDF' }).click());
 const draftText = pdfText(draftPdf);
 writeFileSync(join(OUT, 'vorabzug.txt'), draftText);
-for (const s of ['Baubesprechung Nr. 1', 'VORABZUG', '39.001', 'LG 39 · Trockenbau', 'LG 00 · Allgemein', 'Brandschott Achse 3', 'Trockenbau Huber', 'überfällig', '[unklar - bitte ergänzen]', 'Abb. 39.001-1', 'Abb. 39.001-2', 'Anlagen']) {
+for (const s of ['Baubesprechung Nr. 1', 'VORABZUG', '39.001', 'LG 39 · Trockenbau', 'LG 00 · Allgemein', 'Brandschott Achse 3', 'Trockenbau Huber', 'überfällig', '[unklar - bitte ergänzen]', 'Abb. 39.001-1', 'Abb. 39.001-2', 'Beilagen', 'Anwesenheit', 'entschuldigt']) {
   assert.ok(draftText.includes(s), `Vorabzug enthält „${s}“`);
 }
 
 // Endfassung
 page.once('dialog', (d) => d.accept());
 await page.getByRole('button', { name: 'Endfassung abschließen' }).click();
+// Ohne Verfasser kein Abschluss: wird abgefragt
+await fillModal({ 'Verfasser (Name, Firma/Funktion)': 'Ch. Saringer, ÖBA' }, 'Übernehmen');
+await modal.getByText('Kein nächster Termin eingetragen.', { exact: false }).waitFor();
 await modal.getByRole('button', { name: 'Abschließen' }).click();
-await page.getByRole('button', { name: /PDF teilen \(Fassung 1\)/ }).waitFor();
-const finalPdf = await download(() => page.getByRole('button', { name: /PDF teilen/ }).click());
+const finalShare = page.locator('.card').getByRole('button', { name: /PDF teilen \(Fassung 1\)/ });
+await finalShare.waitFor();
+const finalPdf = await download(() => finalShare.click());
 const finalText = pdfText(finalPdf);
 writeFileSync(join(OUT, 'endfassung.txt'), finalText);
 assert.ok(finalText.includes('Fassung 1'));
+assert.ok(finalText.includes('Ch. Saringer, ÖBA'), 'Verfasser im Kopf');
 assert.ok(finalText.includes('Einwendungen gegen dieses Protokoll sind binnen 14 Tagen ab Übermittlung'));
 assert.ok(!finalText.includes('VORABZUG'));
 assert.equal(await page.locator('.item textarea:not([disabled])').count(), 0, 'Endfassung ist gesperrt');
@@ -191,21 +213,23 @@ assert.equal(await page.locator('.item textarea:not([disabled])').count(), 0, 'E
 // Mail je Firma
 const mailHref = await page.getByRole('link', { name: /Trockenbau Huber \(1, 1 überfällig\)/ }).getAttribute('href');
 const mailBody = decodeURIComponent(mailHref.split('body=')[1]);
-assert.ok(mailHref.startsWith('mailto:eva%40huber.example?subject='));
+assert.ok(mailHref.startsWith('mailto:eva@huber.example?subject='));
 assert.ok(mailBody.includes('ÜBERFÄLLIG') && mailBody.includes('39.001  Brandschott'));
 assert.equal(await page.getByRole('link', { name: /Müller Bau/ }).count(), 0, 'Firmen ohne offene Punkte bekommen keine Mail');
 await shot('04-endfassung');
 
-// Zweite Besprechung: Punkt 39.001 wird fortgeschrieben, 00.001 (Info) nicht
+// Zweite Besprechung: 39.001 (offen) und 00.001 (Information, noch „unklar“) werden fortgeschrieben
 await page.locator('#back').click();
 await page.getByRole('button', { name: 'Neue Baubesprechung' }).click();
+// Vorsitzung ist abgeschlossen → keine Warnung; Teilnehmer übernommen, Anwesenheit offen
 await page.locator('.item').first().waitFor();
-assert.equal(await page.locator('.item').count(), 1);
-assert.equal(await page.locator('.item .item-no').first().textContent(), '39.001');
-assert.equal(await page.locator('.item').first().getByLabel('Leistungsgruppe').count(), 0, 'fortgeschriebene Nummer ist fest');
-await page.locator('.item textarea').fill('Material geliefert, Einbau KW 43');
-await page.getByRole('button', { name: 'Punkt', exact: true }).click();
-const neu = page.locator('.item').nth(1);
+assert.deepEqual(await page.locator('.item .item-no').allTextContents(), ['00.001', '39.001']);
+assert.deepEqual(await page.locator('button.attend').allTextContents(), ['offen', 'offen']);
+const p39 = page.locator('.item', { has: page.locator('.item-no', { hasText: '39.001' }) });
+assert.equal(await p39.getByLabel('Leistungsgruppe').count(), 0, 'fortgeschriebene Nummer ist fest');
+await p39.locator('textarea').fill('Material geliefert, Einbau KW 43');
+await page.getByRole('button', { name: 'Neuer Punkt' }).click();
+const neu = page.locator('.item').nth(2);
 await neu.locator('textarea').fill('Neuer Punkt in Sitzung 2');
 assert.equal(await neu.locator('.item-no').textContent(), '00.002');
 await neu.getByLabel('Leistungsgruppe').selectOption('07');
@@ -217,9 +241,9 @@ await page.waitForTimeout(900); // automatisches Speichern
 // Neu laden: Daten bleiben erhalten
 await page.reload();
 await page.locator('.item').first().waitFor();
-assert.equal(await page.locator('.item textarea').first().inputValue(), 'Material geliefert, Einbau KW 43');
-assert.equal(await page.locator('.item textarea').nth(1).inputValue(), 'Neuer Punkt in Sitzung 2');
-assert.deepEqual(await page.locator('.item .item-no').allTextContents(), ['39.001', '07.001'], 'fortgeschrieben zuerst, dann neue in Erfassungsreihenfolge');
+assert.equal(await p39.locator('textarea').inputValue(), 'Material geliefert, Einbau KW 43');
+assert.equal(await page.locator('.item').nth(2).locator('textarea').inputValue(), 'Neuer Punkt in Sitzung 2');
+assert.deepEqual(await page.locator('.item .item-no').allTextContents(), ['00.001', '39.001', '07.001'], 'fortgeschrieben zuerst, dann neue in Erfassungsreihenfolge');
 const pdf2 = await download(() => page.getByRole('button', { name: 'Vorabzug-PDF' }).click());
 const text2 = pdfText(pdf2);
 writeFileSync(join(OUT, 'vorabzug-2.txt'), text2);
@@ -259,6 +283,23 @@ await page.getByText('Offene Punkte (2)').waitFor();
 await page.getByRole('link', { name: /Baubesprechung Nr. 1/ }).click();
 await page.locator('.item .thumb img').first().waitFor();
 assert.equal(await page.locator('.item .thumb').count(), 2, 'Bilder nach Wiederherstellung vorhanden');
+
+// Datenbank-Verbindung verloren (wie nach langem Hintergrund in Safari): nächste Eingabe wird trotzdem gespeichert
+await page.locator('#back').click();
+await page.getByRole('link', { name: /Baubesprechung Nr\. 2/ }).click();
+await page.locator('.item textarea').first().waitFor();
+await page.evaluate(async () => (await import('/js/db.js'))._closeForTest());
+await page.locator('.item textarea').first().fill('Nach Verbindungsverlust gespeichert');
+await page.waitForTimeout(1200);
+await page.reload();
+await page.locator('.item textarea').first().waitFor();
+assert.equal(await page.locator('.item textarea').first().inputValue(), 'Nach Verbindungsverlust gespeichert');
+
+// Ohne Netz: App startet vollständig aus dem Offline-Speicher dieser Version
+await context.setOffline(true);
+await page.goto(BASE);
+await page.getByRole('link', { name: /BV Musterstraße 12/ }).waitFor();
+await context.setOffline(false);
 
 assert.deepEqual(errors, [], `Keine JS-Fehler: ${errors.join(' | ')}`);
 await browser.close();

@@ -73,8 +73,8 @@ async function renderHome() {
   }
 
   setRail([
-    { icon: 'plus', label: 'Projekt', aria: 'Neues Projekt', primary: true, onclick: createProject },
-    { icon: 'settings', label: 'Sicherung', aria: 'Sicherung und Einstellungen', href: '#/sicherung' },
+    { icon: 'settings', label: 'Sicherung & Einstellungen', aria: 'Sicherung und Einstellungen', href: '#/sicherung', wide: true },
+    { icon: 'plus', label: 'Neues Projekt', primary: true, wide: true, onclick: createProject },
   ]);
   mount(app,
     ...banners,
@@ -146,10 +146,10 @@ async function renderProject(id) {
 
   setRail([
     { icon: 'back', label: 'Zurück', href: '#/' },
-    { icon: 'plus', label: 'Besprechung', aria: 'Neue Baubesprechung', primary: true, onclick: () => start('besprechung') },
-    { icon: 'plus', label: 'Begehung', aria: 'Neue Baubegehung', primary: true, onclick: () => start('begehung') },
-    { icon: 'building', label: `Firmen (${project.companies.length})`, aria: 'Firmen und Kontakte', href: `#/p/${id}/firmen` },
     { icon: 'settings', label: 'Projekt', aria: 'Projektdaten', href: `#/p/${id}/daten` },
+    { icon: 'building', label: `Firmen (${project.companies.length})`, aria: 'Firmen und Kontakte', href: `#/p/${id}/firmen` },
+    { icon: 'plus', label: 'Begehung', aria: 'Neue Baubegehung', onclick: () => start('begehung') },
+    { icon: 'plus', label: 'Neue Baubesprechung', primary: true, wide: true, onclick: () => start('besprechung') },
   ]);
   mount(app,
     h('h2', {}, MEETING_TYPES.besprechung.label + 'en'),
@@ -215,8 +215,8 @@ async function renderCompanies(id) {
       } }, icon('trash'), 'Löschen')));
 
   setRail([
-    { icon: 'back', label: 'Zurück', href: `#/p/${id}` },
-    { icon: 'plus', label: 'Firma', aria: 'Firma hinzufügen', primary: true, onclick: addCompany },
+    { icon: 'back', label: 'Zurück', href: `#/p/${id}`, wide: true },
+    { icon: 'plus', label: 'Firma hinzufügen', primary: true, wide: true, onclick: addCompany },
   ]);
   mount(app,
     h('p', { class: 'muted small' }, 'Die Kontakte mit E-Mail bilden den Verteiler. Die Leistungsgruppe (LB-HB) bestimmt die Nummer der Punkte: Wählst du bei einem Punkt die Firma, bekommt er die Nummer ihrer LG (z. B. 39.001). Allgemeine Punkte laufen unter LG 00.'),
@@ -260,7 +260,7 @@ async function renderProjectSettings(id) {
       },
     })));
 
-  setRail([{ icon: 'back', label: 'Zurück', href: `#/p/${id}` }]);
+  setRail([{ icon: 'back', label: 'Zurück', href: `#/p/${id}`, wide: true }]);
   mount(app,
     h('div', { class: 'card' },
       field('name', 'Bauvorhaben'),
@@ -302,7 +302,7 @@ async function renderBackup() {
   const persisted = await navigator.storage?.persisted?.();
   const mb = (n) => `${(n / 1024 / 1024).toFixed(1)} MB`;
 
-  setRail([{ icon: 'back', label: 'Zurück', href: '#/' }]);
+  setRail([{ icon: 'back', label: 'Zurück', href: '#/', wide: true }]);
   const prefs = getPrefs();
   const prefSelect = (key, label, options) => labeled(label, (() => {
     const s = h('select', { onchange: (e) => setPrefs({ [key]: e.target.value }) }, options.map(([v, l]) => h('option', { value: v }, l)));
@@ -354,6 +354,9 @@ async function renderBackup() {
         }
       } }, icon('upload'), 'Sicherung einspielen')),
     h('div', { class: 'card' },
+      h('h3', {}, 'Version'),
+      h('p', { class: 'small' }, `App-Version: ${await appVersion()}`)),
+    h('div', { class: 'card' },
       h('h3', {}, 'Speicher'),
       h('p', { class: 'small' }, est ? `Belegt: ${mb(est.usage)} von ca. ${mb(est.quota)}` : 'Keine Angabe möglich.'),
       h('p', { class: 'small' }, persisted ? 'Dauerhafter Speicher ist aktiv.' : 'Dauerhafter Speicher nicht bestätigt – regelmäßig sichern.')),
@@ -362,8 +365,37 @@ async function renderBackup() {
 
 // ---------- Start ----------
 
+// ---------- Updates: neue Version erst nach Tipp auf „Neu starten“ ----------
+let reloading = false;
+function showUpdate(reg) {
+  if (document.getElementById('update-bar')) return;
+  const bar = h('div', { id: 'update-bar', class: 'update-bar', role: 'status' },
+    h('span', {}, 'Neue Version verfügbar.'),
+    h('button', { type: 'button', class: 'primary', onclick: async () => {
+      await flushPending();
+      reloading = true;
+      reg.waiting?.postMessage('skipWaiting');
+    } }, 'Neu starten'),
+    h('button', { type: 'button', class: 'ghost', 'aria-label': 'Später', onclick: () => bar.remove() }, 'Später'));
+  document.body.append(bar);
+}
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Service Worker:', e));
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    if (reg.waiting && navigator.serviceWorker.controller) showUpdate(reg);
+    reg.addEventListener('updatefound', () => {
+      const w = reg.installing;
+      w?.addEventListener('statechange', () => {
+        if (w.state === 'installed' && navigator.serviceWorker.controller) showUpdate(reg);
+      });
+    });
+    document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && reg.update().catch(() => {}));
+  }).catch((e) => console.warn('Service Worker:', e));
+  navigator.serviceWorker.addEventListener('controllerchange', () => reloading && location.reload());
+}
+
+export async function appVersion() {
+  const keys = (await caches?.keys?.()) ?? [];
+  return keys.find((k) => k.startsWith('bp-'))?.slice(3) ?? 'unbekannt';
 }
 navigator.storage?.persist?.().catch(() => {});
 applyPrefs();

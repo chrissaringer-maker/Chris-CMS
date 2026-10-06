@@ -271,7 +271,7 @@ export function icon(name, size = 20) {
 
 // ---------- Einstellungen der Bedienung (nur auf diesem Gerät) ----------
 const PREFS_KEY = 'bp-prefs';
-const PREF_DEFAULTS = { hand: 'rechts', rail: 'mitte' };
+const PREF_DEFAULTS = { hand: 'rechts', rail: 'unten' };
 export function getPrefs() {
   try {
     return { ...PREF_DEFAULTS, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') };
@@ -294,28 +294,21 @@ export function applyPrefs(p = getPrefs()) {
   document.documentElement.dataset.rail = p.rail;
 }
 
-// ---------- Daumenleiste: senkrechte Aktionsleiste am Rand der Haltehand ----------
-// items: [{ icon, label, onclick | href, primary, danger, active, disabled, id, pair }]
-// Einträge mit gleichem `pair` stehen nebeneinander (z. B. ▲ ▼).
+// ---------- Daumenleiste: Knopffeld unten am Rand der Haltehand (2 Spalten) ----------
+// items: [{ icon, label, onclick | href, primary, danger, active, disabled, id, wide }]
+// Reihenfolge = Lesereihenfolge (zeilenweise); das Wichtigste gehört ans Ende (unten, am Daumen).
+// `wide` belegt eine ganze Zeile.
 export function setRail(items = []) {
   const rail = document.getElementById('rail');
   const make = (it) => {
     const attrs = {
-      class: ['rail-btn', it.primary && 'primary', it.danger && 'danger', it.active && 'active'].filter(Boolean).join(' '),
+      class: ['rail-btn', it.primary && 'primary', it.danger && 'danger', it.active && 'active', it.wide && 'wide'].filter(Boolean).join(' '),
       id: it.id, 'aria-label': it.aria ?? it.label, disabled: it.disabled,
     };
-    const body = [icon(it.icon, 26), h('span', { class: 'rail-label' }, it.label)];
+    const body = [icon(it.icon, it.wide ? 30 : 26), h('span', { class: 'rail-label' }, it.label)];
     return it.href ? h('a', { ...attrs, href: it.href }, body) : h('button', { ...attrs, type: 'button', onclick: it.onclick }, body);
   };
-  const out = [];
-  for (let i = 0; i < items.length; i++) {
-    const it = items[i];
-    if (!it) continue;
-    if (it.pair && items[i + 1]?.pair === it.pair) {
-      out.push(h('div', { class: 'rail-pair' }, make(it), make(items[i + 1])));
-      i++;
-    } else out.push(make(it));
-  }
+  const out = items.filter(Boolean).map(make);
   mount(rail, out);
   document.body.classList.toggle('has-rail', out.length > 0);
   return rail;

@@ -359,67 +359,84 @@ label.inline { min-height: var(--tap); margin: 8px 0; font-size: 1rem; font-weig
 }
 
 /* =========================================================================
-   Einhandbedienung im Querformat: Daumenleiste am Rand der Haltehand
-   (Standard rechts; Einstellung „links“ spiegelt alles). Position Mitte/unten.
+   Einhandbedienung im Querformat: Knopffeld unten am Rand der Haltehand
+   (Standard rechts/unten; Einstellung „links“ spiegelt, „Mitte“ hebt das Feld an).
+   Zwei Spalten à 88 px, Zeilen 80 px, Diktat breit 96 px, Abstände 12 px.
    ========================================================================= */
-:root { --rail-w: 92px; --rail-gap: 12px; }
+:root { --rail-col: 88px; --rail-gap: 12px; --rail-w: calc(2 * var(--rail-col) + var(--rail-gap)); --rail-edge: 12px; }
 
 .rail {
   position: fixed; z-index: 30;
-  top: calc(env(safe-area-inset-top) + 64px); bottom: calc(env(safe-area-inset-bottom) + 12px);
-  right: max(var(--rail-gap), env(safe-area-inset-right));
+  right: max(var(--rail-edge), env(safe-area-inset-right));
+  bottom: calc(env(safe-area-inset-bottom) + 16px);
+  max-height: calc(100vh - env(safe-area-inset-top) - 80px);
   width: var(--rail-w);
-  display: flex; flex-direction: column; justify-content: center; gap: 8px;
+  display: grid; grid-template-columns: repeat(2, var(--rail-col)); grid-auto-rows: minmax(80px, auto);
+  gap: var(--rail-gap); align-content: end;
   overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none;
 }
 .rail::-webkit-scrollbar { display: none; }
 .rail:empty { display: none; }
-html[data-rail="unten"] .rail { justify-content: flex-end; }
-html[data-hand="links"] .rail { right: auto; left: max(var(--rail-gap), env(safe-area-inset-left)); }
+html[data-rail="mitte"] .rail { bottom: auto; top: 50%; transform: translateY(-40%); }
+html[data-hand="links"] .rail { right: auto; left: max(var(--rail-edge), env(safe-area-inset-left)); }
 
 .rail-btn {
-  flex: none; flex-direction: column; gap: 3px;
-  width: 100%; min-height: 64px; padding: 6px 4px;
-  border-radius: 16px; background: var(--card); color: var(--link);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, .12), 0 0 0 .5px var(--line);
-  font-size: .75rem; font-weight: 600; line-height: 1.1; text-align: center;
+  flex-direction: column; gap: 4px;
+  width: 100%; min-height: 80px; padding: 8px 4px;
+  border-radius: 18px; background: var(--card); color: var(--link);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .14), 0 0 0 .5px var(--line);
+  font-size: .8125rem; font-weight: 600; line-height: 1.15; text-align: center;
 }
 .rail-btn .icon { width: 26px; height: 26px; }
+.rail-btn.wide { grid-column: 1 / -1; min-height: 96px; flex-direction: row; gap: 10px; font-size: 1.0625rem; margin-top: 8px; }
+.rail-btn.wide .icon { width: 30px; height: 30px; }
 .rail-label { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rail-btn.primary { background: var(--primary); color: #fff; min-height: 76px; }
-.rail-btn.danger { background: var(--red); color: #fff; min-height: 76px; }
+.rail-btn:not(.wide) .rail-label { white-space: normal; }
+.rail-btn.primary { background: var(--primary); color: #fff; }
+.rail-btn.danger { background: var(--red); color: #fff; }
 .rail-btn.active { animation: rec 1.4s ease-in-out infinite; }
 .rail-btn:disabled { opacity: .4; }
-.rail-pair { display: flex; gap: 6px; }
-.rail-pair .rail-btn { min-height: 64px; }
-@keyframes rec { 50% { box-shadow: 0 0 0 8px rgba(255, 59, 48, .25), 0 1px 4px rgba(0, 0, 0, .12); } }
+@keyframes rec { 50% { box-shadow: 0 0 0 10px rgba(255, 59, 48, .25), 0 2px 8px rgba(0, 0, 0, .14); } }
 
-/* Inhalt hält Abstand zur Leiste */
-body.has-rail main { padding-right: calc(var(--rail-w) + var(--rail-gap) + 20px + env(safe-area-inset-right)); }
+/* Inhalt hält Abstand zum Knopffeld */
+body.has-rail main {
+  max-width: calc(980px + var(--rail-w) + 2 * var(--rail-edge));
+  padding-right: calc(var(--rail-w) + var(--rail-edge) + 24px + env(safe-area-inset-right));
+}
 html[data-hand="links"] body.has-rail main {
   padding-right: max(20px, env(safe-area-inset-right));
-  padding-left: calc(var(--rail-w) + var(--rail-gap) + 20px + env(safe-area-inset-left));
+  padding-left: calc(var(--rail-w) + var(--rail-edge) + 24px + env(safe-area-inset-left));
 }
-body.has-rail main { max-width: calc(980px + var(--rail-w) + var(--rail-gap)); }
 body.has-rail .fab { display: none; }
 
-/* aktueller Punkt: Ziel von Diktat, Foto, Skizze, Erledigt */
-.item.current { box-shadow: 0 0 0 2px var(--tint), 0 6px 20px rgba(0, 122, 255, .12); }
+/* aktueller Punkt: Ziel von Diktat, Foto, Erledigt */
+.item.current { box-shadow: 0 0 0 3px var(--tint), 0 6px 20px rgba(0, 122, 255, .14); }
 
-/* Auswahlfenster erscheinen am Daumen; Formulare oben (die Tastatur braucht unten Platz) */
+/* Anwesenheit: Tipp schaltet weiter */
+.attend { min-width: 150px; min-height: 48px; font-size: .9375rem; }
+.attend[data-state="offen"] { background: var(--n-bg); color: var(--muted); box-shadow: inset 0 0 0 1.5px var(--line); }
+.attend[data-state="anwesend"] { background: var(--g-bg); color: var(--g-ink); }
+.attend[data-state="entschuldigt"] { background: var(--o-bg); color: var(--o-ink); }
+.attend[data-state="fehlt"] { background: var(--r-bg); color: var(--r-ink); }
+
+/* Auswahlfenster erscheinen über dem Knopffeld am Daumen; Formulare oben (Tastatur braucht unten Platz) */
 .modal-backdrop.at-thumb { justify-content: flex-end; align-items: flex-end;
-  padding: 16px calc(var(--rail-w) + var(--rail-gap) + 16px + env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 16px) 16px; }
+  padding: 16px calc(var(--rail-edge) + env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 16px) 16px; }
 .modal-backdrop.at-top { justify-content: flex-end; align-items: flex-start;
-  padding: calc(env(safe-area-inset-top) + 24px) calc(var(--rail-w) + var(--rail-gap) + 16px + env(safe-area-inset-right)) 16px 16px; }
+  padding: calc(env(safe-area-inset-top) + 24px) calc(var(--rail-w) + var(--rail-edge) + 16px + env(safe-area-inset-right)) 16px 16px; }
 html[data-hand="links"] .modal-backdrop.at-thumb, html[data-hand="links"] .modal-backdrop.at-top {
-  justify-content: flex-start;
-  padding-left: calc(var(--rail-w) + var(--rail-gap) + 16px + env(safe-area-inset-left)); padding-right: 16px;
+  justify-content: flex-start; padding-right: 16px;
+  padding-left: calc(var(--rail-edge) + env(safe-area-inset-left));
 }
-.modal-backdrop .modal { width: min(460px, 100%); }
-.modal .actions[style*="column"] > button { min-height: 52px; font-size: 1.0625rem; }
+html[data-hand="links"] .modal-backdrop.at-top { padding-left: calc(var(--rail-w) + var(--rail-edge) + 16px + env(safe-area-inset-left)); }
+.modal-backdrop .modal { width: min(440px, 100%); }
+.modal .actions[style*="column"] { gap: 12px; }
+.modal .actions[style*="column"] > button { min-height: 60px; font-size: 1.0625rem; }
+/* Formular-Dialoge: Hauptaktion rechts (wie iOS) */
+.modal form > .actions { flex-direction: row-reverse; }
 
-/* Hinweise auf der Gegenseite, damit sie die Leiste nicht verdecken */
-#toast { left: 24px; right: auto; transform: translateY(12px); bottom: calc(env(safe-area-inset-bottom) + 24px); text-align: left; }
+/* Hinweise auf der Gegenseite, damit sie das Knopffeld nicht verdecken */
+#toast { left: 24px; right: auto; transform: translateY(12px); bottom: calc(env(safe-area-inset-bottom) + 24px); text-align: left; max-width: min(560px, calc(100vw - var(--rail-w) - 72px)); }
 #toast.show { transform: translateY(0); }
 html[data-hand="links"] #toast { left: auto; right: 24px; }
 
@@ -433,17 +450,21 @@ html[data-hand="links"] .sketch { flex-direction: row; }
   box-shadow: -.5px 0 0 rgba(255, 255, 255, .14);
 }
 .sketch .tools > button { width: 100%; justify-content: flex-start; }
-.sketch .tools > button.accent { justify-content: center; min-height: 64px; font-size: 1.0625rem; }
+.sketch .tools > button.accent { justify-content: center; min-height: 72px; font-size: 1.0625rem; }
 .sketch .tool-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .sketch .tool-row > button { flex: 1 1 0; padding: 0 6px; }
 .sketch .tool-row.swatches > .swatch { flex: 0 0 44px; }
 .sketch .tools .spacer { flex: 1 1 auto; min-height: 8px; }
-.sketch .stage { order: 0; }
 .sketch .hint {
   position: absolute; left: 0; right: 172px; bottom: 0;
   background: linear-gradient(transparent, rgba(28, 28, 30, .85)); pointer-events: none;
 }
 html[data-hand="links"] .sketch .hint { left: 172px; right: 0; }
-.rail-pair .rail-btn { width: auto; flex: 1 1 0; min-width: 0; padding: 6px 0; }
-.rail-pair .rail-label { display: none; }
-.rail-pair .rail-btn .icon { width: 30px; height: 30px; }
+
+/* Hinweis auf neue Version (oben, außerhalb des Knopffelds) */
+.update-bar {
+  position: fixed; z-index: 70; top: calc(env(safe-area-inset-top) + 60px); left: 16px;
+  display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px;
+  background: var(--card); border-radius: 14px; box-shadow: 0 8px 28px rgba(0, 0, 0, .22);
+  font-weight: 600;
+}

@@ -129,7 +129,7 @@ const pdfPages = Number((execSync(`pdfinfo "${pdfPath}" | grep Pages || true`).t
 await page.goto(`${BASE}#/sicherung`);
 const tBak = Date.now();
 const [bak] = await Promise.all([page.waitForEvent('download', { timeout: 180000 }), page.getByRole('button', { name: 'Sicherung erstellen' }).click().then(shareInDialog)]);
-const bakPath = join(OUT, 'stress-sicherung.json');
+const bakPath = join(OUT, 'stress.bpsicherung');
 await bak.saveAs(bakPath);
 const backupMs = Date.now() - tBak;
 

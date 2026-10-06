@@ -109,9 +109,9 @@ test('offene Punkte werden in die nächste Besprechung übernommen, erledigte un
   assert.equal(e.due, '2026-10-15');
   assert.equal(e.status, 'offen');
   assert.equal(e.note, '');
-  // Teilnehmer übernommen, Anwesenheit zurückgesetzt
+  // Teilnehmer übernommen, Anwesenheit offen (nicht automatisch „anwesend“)
   assert.equal(m2.participants.length, 1);
-  assert.equal(m2.participants[0].present, true);
+  assert.equal(m2.participants[0].attendance, '');
   // Eingaben unverändert
   assert.equal(open.log.length, 1);
 });
@@ -167,7 +167,7 @@ test('Mail je Firma: nur eigene offene Punkte, überfällig zuerst, Hinweis auf 
   assert.match(d.subject, /Baubesprechung Nr\. 1 vom 06\.10\.2026 – Ihre offenen Punkte \(Müller Bau\)/);
 
   const url = mailtoUrl(d.recipients, d.subject, d.body);
-  assert.ok(url.startsWith('mailto:max%40mueller.example?subject='));
+  assert.ok(url.startsWith('mailto:max@mueller.example?subject='));
   assert.ok(!url.includes(' '));
 });
 
@@ -232,4 +232,53 @@ test('Fortschreibung auch, wenn die Vorsitzung nach Anlage der Folgesitzung erg�
   assert.equal(carryOver({ meetings: [m1, m2, m3], items: c3, meeting: m2 }).length, 0);
   assert.equal(laterMeeting([m1, m2, m3], m1).id, m2.id);
   assert.equal(laterMeeting([m1, m2, m3], m3), null);
+});
+
+test('Anwesenheit: neue Sitzung beginnt offen, Altdaten werden abgebildet, Protokoll zeigt Text', async () => {
+  const { attendanceOf, ATTENDANCE } = await import('../js/model.js');
+  const { project, mueller } = setup();
+  const { meeting: m1 } = createMeeting({ project, meetings: [], items: [], type: 'besprechung' });
+  m1.participants = [{ companyId: mueller.id, name: 'Max', present: true }, { companyId: mueller.id, name: 'Eva', attendance: 'entschuldigt' }];
+  assert.equal(attendanceOf(m1.participants[0]), 'anwesend');
+  const { meeting: m2 } = createMeeting({ project, meetings: [m1], items: [], type: 'besprechung' });
+  assert.deepEqual(m2.participants.map(attendanceOf), ['', '']);
+  assert.ok(m2.participants.every((p) => !('present' in p)));
+  const prot = buildProtocol({ project, meeting: m1, meetings: [m1], items: [] });
+  assert.deepEqual(prot.participants.map((p) => p.attendance), [ATTENDANCE.anwesend, ATTENDANCE.entschuldigt]);
+});
+
+test('Unklare Informationen werden fortgeschrieben, erledigte nicht', () => {
+  const { project } = setup();
+  const { meeting: m1 } = createMeeting({ project, meetings: [], items: [], type: 'besprechung' });
+  const info = updateEntry(addItem({ meeting: m1, items: [], type: 'info' }), m1.id, { unclear: true });
+  const doneUnclear = updateEntry(addItem({ meeting: m1, items: [info] }), m1.id, { unclear: true, status: 'erledigt' });
+  const { meeting: m2, items: carried } = createMeeting({ project, meetings: [m1], items: [info, doneUnclear], type: 'besprechung' });
+  assert.deepEqual(carried.map((i) => i.id), [info.id]);
+  assert.equal(entryFor(carried[0], m2.id).status, 'info');
+  assert.equal(entryFor(carried[0], m2.id).unclear, true);
+});
+
+test('Firmenmail nur an Kontakte im Verteiler; @ bleibt lesbar', () => {
+  const { project, elektro } = setup();
+  const { meeting: m1 } = createMeeting({ project, meetings: [], items: [], type: 'besprechung', date: '2026-10-06' });
+  const it = { ...addItem({ meeting: m1, items: [], companyId: elektro.id }), text: 'Trockenbauwand schließen' };
+  const [d] = companyDigests({ project, meeting: m1, items: [it], refDate: '2026-10-06' });
+  assert.deepEqual(d.recipients, ['eva@huber.example'], 'Kontakt „nicht im Verteiler“ fehlt');
+  assert.ok(mailtoUrl(['a@b.at', 'c@d.at'], 'S', 'B').startsWith('mailto:a@b.at,c@d.at?subject='));
+});
+
+test('Altprojekte (5 Werktage, alter Wortlaut) drucken die österreichische 14-Tage-Klausel', () => {
+  const { project } = setup();
+  project.objectionDays = 5;
+  project.objectionText = 'Einwendungen gegen dieses Protokoll sind binnen {tage} Werktagen nach Erhalt schriftlich an den Verfasser zu richten. Andernfalls gilt das Protokoll als genehmigt.';
+  assert.match(objectionClause(project), /binnen 14 Tagen ab Übermittlung/);
+  project.objectionText = 'Eigener Text, {tage} Tage.';
+  project.objectionDays = 10;
+  assert.equal(objectionClause(project), 'Eigener Text, 10 Tage.');
+});
+
+test('PDF-Text: Sonderzeichen werden zur Grundform statt zu verschwinden', async () => {
+  const { clean } = await import('../js/pdf.js');
+  assert.equal(clean('Šimić Đorđević Łukasz'), 'Simic Djordjevic Lukasz');
+  assert.equal(clean('Müller – Größe ß „ok“ €'), 'Müller - Größe ß "ok" EUR');
 });

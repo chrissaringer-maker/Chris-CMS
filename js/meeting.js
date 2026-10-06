@@ -4,7 +4,7 @@ import * as store from './store.js';
 import {
   uid, meetingTitle, formatDate, isLocked, versionLabel, finalizeMeeting, reopenMeeting, addItem, itemsForMeeting,
   canEditBase, canDelete, canRenumber, changeLg, lgFromCompany, normalizeLg, projectLgs, lgLabel, LG_GENERAL,
-  carryOver, laterMeeting, seriesOf,
+  carryOver, laterMeeting, seriesOf, ATTENDANCE, ATTENDANCE_CYCLE, attendanceOf,
   defaultStatus, isOverdue, buildProtocol, companyDigests, mailtoUrl, distribution, fileSafe,
   ITEM_TYPES, STATUS, isoDate,
 } from './model.js';
@@ -42,15 +42,24 @@ function schedule(key, fn) {
 }
 export async function flushPending() {
   clearTimeout(timer);
-  const fns = [...pending.values()];
+  const jobs = [...pending.entries()];
   pending.clear();
-  try {
-    for (const fn of fns) await fn();
-    if (fns.length) markSaved();
-  } catch (e) {
-    console.error(e);
-    toast(`Speichern fehlgeschlagen: ${e.message}`, 6000);
+  let failed = 0;
+  for (const [key, fn] of jobs) {
+    try {
+      await fn();
+    } catch (e) {
+      console.error(e);
+      failed++;
+      // nicht verwerfen: beim nächsten Versuch erneut speichern (neuere Änderungen haben Vorrang)
+      if (!pending.has(key)) pending.set(key, fn);
+    }
   }
+  if (failed) {
+    toast(`Speichern fehlgeschlagen (${failed}) – wird erneut versucht. Nicht schließen!`, 6000);
+    clearTimeout(timer);
+    timer = setTimeout(flushPending, 3000);
+  } else if (jobs.length) markSaved();
 }
 
 const select = (options, value, onchange, disabled = false) => {
@@ -125,28 +134,55 @@ export async function renderMeeting(app, id) {
       if (!r) return;
       name = r.name;
     }
-    meeting.participants.push({ companyId: cid, name, present: true });
+    meeting.participants.push({ companyId: cid, name, attendance: '' });
     await store.saveMeeting(meeting);
     rerender();
   };
   const addAllCompanies = async () => {
     for (const c of project.companies) {
       if (meeting.participants.some((p) => p.companyId === c.id)) continue;
-      meeting.participants.push({ companyId: c.id, name: c.contacts[0]?.name ?? '', present: true });
+      meeting.participants.push({ companyId: c.id, name: c.contacts[0]?.name ?? '', attendance: '' });
     }
     await store.saveMeeting(meeting);
     rerender();
   };
+  // Anwesenheit: Tipp auf die Zeile schaltet weiter (offen → anwesend → entschuldigt → nicht erschienen)
+  const countPresent = () => meeting.participants.filter((p) => attendanceOf(p) === 'anwesend').length;
+  const partHead = h('h3', {});
+  const refreshPartHead = () => {
+    const open = meeting.participants.filter((p) => !attendanceOf(p)).length;
+    partHead.textContent = `Teilnehmer (${countPresent()} anwesend${open ? `, ${open} offen` : ''})`;
+  };
+  refreshPartHead();
+  const attendanceButton = (p) => {
+    const b = h('button', { type: 'button', class: 'attend', disabled: locked });
+    const show = () => {
+      const a = attendanceOf(p);
+      b.textContent = ATTENDANCE[a];
+      b.dataset.state = a || 'offen';
+      b.setAttribute('aria-label', `Anwesenheit: ${ATTENDANCE[a]} – tippen zum Ändern`);
+    };
+    b.addEventListener('click', () => {
+      const next = ATTENDANCE_CYCLE[(ATTENDANCE_CYCLE.indexOf(attendanceOf(p)) + 1) % ATTENDANCE_CYCLE.length];
+      p.attendance = next;
+      delete p.present;
+      show();
+      refreshPartHead();
+      saveMeetingSoon();
+    });
+    show();
+    return b;
+  };
   const participants = h('div', { class: 'card' },
-    h('h3', {}, `Teilnehmer (${meeting.participants.filter((p) => p.present !== false).length} anwesend)`),
+    partHead,
     meeting.participants.length ? null : h('p', { class: 'muted small' }, 'Noch keine Teilnehmer.'),
     meeting.participants.map((p, idx) => h('div', { class: 'row', style: 'margin:6px 0' },
-      h('input', { type: 'checkbox', checked: p.present !== false, disabled: locked, 'aria-label': 'anwesend',
-        onchange: (e) => { p.present = e.target.checked; saveMeetingSoon(); } }),
       h('div', { class: 'grow' },
         h('strong', {}, bundle.project.companies.find((c) => c.id === p.companyId)?.name ?? '–'),
         h('div', { class: 'sub' }, p.name || 'ohne Namen')),
+      attendanceButton(p),
       locked ? null : h('button', { class: 'ghost', 'aria-label': 'Teilnehmer entfernen', onclick: async () => {
+        if (!(await confirmAsk('Teilnehmer entfernen?', p.name || '', 'Entfernen', true))) return;
         meeting.participants.splice(idx, 1);
         await store.saveMeeting(meeting);
         rerender();
@@ -256,7 +292,7 @@ export async function renderMeeting(app, id) {
       card.className = `card item ${entry.status}${currentId === item.id ? ' current' : ''}`;
     };
     // Antippen irgendwo in der Karte macht sie zum aktuellen Punkt (Ziel der Daumenleiste)
-    card.addEventListener('pointerdown', () => setCurrent(item.id));
+    card.addEventListener('click', () => setCurrent(item.id));
     card.addEventListener('focusin', () => setCurrent(item.id));
 
     const statusSel = select(Object.entries(STATUS), entry.status, (v) => {
@@ -464,7 +500,7 @@ export async function renderMeeting(app, id) {
 
   function step(dir) {
     const ids = [...itemList.querySelectorAll('.item')].map((el) => el.id.slice(2));
-    if (!ids.length) return;
+    if (!ids.length) return toast('Noch keine Punkte.');
     const i = ids.indexOf(currentId);
     const next = i < 0 ? (dir > 0 ? 0 : ids.length - 1) : Math.min(ids.length - 1, Math.max(0, i + dir));
     setCurrent(ids[next], { scroll: true });
@@ -482,37 +518,45 @@ export async function renderMeeting(app, id) {
     return c ? { item: c.item, entry: c.entry } : { entry: null };
   };
 
+  // Daumenleiste (zeilenweise, Wichtigstes unten):  Mehr | ▲  ·  Erledigt | ▼  ·  Foto | + Punkt  ·  [ Diktat → Nr. ]
   function updateRail() {
     if (stale()) return;
     const c = cards.get(currentId);
-    const back = { icon: 'back', label: 'Zurück', href: `#/p/${project.id}` };
-    const nav = [
-      { icon: 'up', label: 'Vorher', aria: 'Vorheriger Punkt', pair: 'nav', onclick: () => step(-1) },
-      { icon: 'down', label: 'Weiter', aria: 'Nächster Punkt', pair: 'nav', onclick: () => step(1) },
-    ];
+    const ids = [...itemList.querySelectorAll('.item')].map((el) => el.id.slice(2));
+    const pos = c ? `${ids.indexOf(currentId) + 1}/${ids.length}` : `${ids.length}`;
     const more = { icon: 'more', label: 'Mehr', onclick: moreMenu };
+    const up = { icon: 'up', label: 'Vorher', aria: 'Vorheriger Punkt', onclick: () => step(-1) };
+    const down = { icon: 'down', label: `Weiter ${pos}`, aria: 'Nächster Punkt', onclick: () => step(1) };
     if (locked) {
-      setRail([back, { icon: 'share', label: 'PDF', primary: true, onclick: () => makePdf(false).catch((e) => toast(e.message, 6000)) }, ...nav, more]);
+      setRail([more, up, { icon: 'check', label: c ? c.item.no : '–', disabled: true }, down,
+        { icon: 'share', label: `PDF teilen (${versionLabel(meeting)})`, primary: true, wide: true, onclick: () => makePdf(false).catch((e) => toast(e.message, 6000)) }]);
       return;
     }
+    const keyboard = !dictationAvailable() || keyboardFallback;
+    const target = c?.field ? c.item.no : 'neu';
     setRail([
-      back,
-      { icon: dictation ? 'stop' : 'mic', label: dictation ? 'Stopp' : 'Diktat', primary: !dictation, danger: !!dictation, active: !!dictation, id: 'rail-dictate', onclick: toggleDictation },
-      { icon: 'plus', label: 'Punkt', onclick: () => newItem({ focus: !dictationAvailable() || keyboardFallback }) },
+      more, up,
+      { icon: 'check', label: c?.entry.status === 'erledigt' ? 'Wieder offen' : 'Erledigt', disabled: !c, onclick: toggleDone }, down,
       { icon: 'camera', label: 'Foto', onclick: () => addPhotos(targetOfCurrent(), true) },
-      { icon: 'pen', label: 'Skizze', onclick: () => addSketch(targetOfCurrent()) },
-      ...nav,
-      { icon: 'check', label: c?.entry.status === 'erledigt' ? 'Wieder offen' : 'Erledigt', disabled: !c, onclick: toggleDone },
-      more,
+      { icon: 'plus', label: 'Punkt', aria: 'Neuer Punkt', onclick: () => newItem({ focus: keyboard }) },
+      {
+        icon: dictation ? 'stop' : 'mic', wide: true, id: 'rail-dictate', onclick: toggleDictation,
+        label: dictation ? `Stopp → ${target}` : `${keyboard ? 'Tastatur-Diktat' : 'Diktat'} → ${target}`,
+        aria: dictation ? 'Stopp' : 'Diktat', primary: !dictation, danger: !!dictation, active: !!dictation,
+      },
     ]);
   }
 
   async function moreMenu() {
+    // Häufiges unten (am Daumen), Seltenes oben
     const options = locked
-      ? [['share', `PDF teilen (${versionLabel(meeting)})`], ['copy', 'Verteiler kopieren'], ['mails', 'Mails „Ihre offenen Punkte“'], ['reopen', 'Neue Fassung anlegen'], ['top', 'Nach oben']]
-      : [['draft', 'Vorabzug-PDF'], ['final', 'Endfassung abschließen'], ['copy', 'Verteiler kopieren'], ['mails', 'Mails „Ihre offenen Punkte“'], ['library', 'Foto aus Mediathek'], ['top', 'Nach oben (Kopf, Teilnehmer)']];
+      ? [['back', 'Zurück zum Projekt'], ['reopen', 'Neue Fassung anlegen'], ['top', 'Nach oben (Kopf, Teilnehmer)'], ['mails', 'Mails „Ihre offenen Punkte“'], ['copy', 'Verteiler kopieren'], ['share', `PDF teilen (${versionLabel(meeting)})`]]
+      : [['back', 'Zurück zum Projekt'], ['top', 'Nach oben (Kopf, Teilnehmer)'], ['final', 'Endfassung abschließen'], ['draft', 'Vorabzug-PDF'],
+        ['copy', 'Verteiler kopieren'], ['mails', 'Mails „Ihre offenen Punkte“'], ['library', 'Foto aus Mediathek'], ['sketch', 'Skizze']];
     const a = await choose('Weitere Aktionen', options);
     try {
+      if (a === 'back') location.hash = `#/p/${project.id}`;
+      if (a === 'sketch') await addSketch(targetOfCurrent());
       if (a === 'share') await makePdf(false);
       if (a === 'draft') await makePdf(true);
       if (a === 'final') await finalize();
@@ -569,17 +613,35 @@ export async function renderMeeting(app, id) {
   };
 
   const finalize = async () => {
+    stopDictation();
     await flushPending();
+    // Ohne Verfasser hätte die Einwendungsklausel keinen Adressaten
+    if (!project.author?.trim()) {
+      const r = await ask({
+        title: 'Verfasser fehlt',
+        text: 'An den Verfasser richten die Firmen ihre Einwendungen. Er steht im Protokollkopf.',
+        fields: [{ name: 'author', label: 'Verfasser (Name, Firma/Funktion)', placeholder: 'z. B. Ch. Saringer, ÖBA' }],
+        ok: 'Übernehmen',
+      });
+      if (!r?.author) return toast('Ohne Verfasser kein Abschluss.');
+      project.author = r.author;
+      await store.saveProject(project);
+    }
     const all = [...itemsById.values()];
     const open = itemsForMeeting(all, meeting.id);
     const unclear = open.filter((r) => r.entry.unclear).length;
     const empty = open.filter((r) => r.item.createdMeetingId === meeting.id && !r.item.text.trim()).length;
+    const noAttendance = meeting.participants.filter((p) => !attendanceOf(p)).length;
     const warn = [
+      noAttendance ? `Bei ${noAttendance} Teilnehmer(n) ist die Anwesenheit noch offen.` : '',
       unclear ? `${unclear} Punkt(e) sind als „unklar“ markiert.` : '',
       empty ? `${empty} neue(r) Punkt(e) ohne Text.` : '',
+      meeting.nextDate ? '' : 'Kein nächster Termin eingetragen.',
     ].filter(Boolean).join(' ');
     if (!(await confirmAsk('Endfassung abschließen?', `${warn} Danach ist die Sitzung gesperrt; Änderungen nur als neue Fassung.`.trim(), 'Abschließen'))) return;
     const protocol = buildProtocol({ project, meeting, meetings: bundle.meetings, items: all, attachments: bundle.attachments });
+    const prevFinal = meeting.finals.at(-1);
+    protocol.supersedes = prevFinal ? `Fassung ${prevFinal.version} vom ${formatDate(prevFinal.at.slice(0, 10))}` : '';
     Object.assign(meeting, finalizeMeeting(meeting, { ...protocol, version: `Fassung ${meeting.finals.length + 1}` }));
     await store.saveMeeting(meeting);
     toast('Endfassung erstellt. Jetzt PDF teilen und versenden.');

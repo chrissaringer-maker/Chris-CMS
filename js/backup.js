@@ -30,15 +30,30 @@ export async function exportAll() {
   return new Blob([MAGIC, `${jsonBytes}\n`, json, ...parts], { type: 'application/octet-stream' });
 }
 
+const BROKEN = 'Die Sicherungsdatei ist unvollständig oder beschädigt. Es wurde nichts verändert.';
+
 async function readV2(file) {
   const start = await file.slice(0, 64).arrayBuffer();
   const text = new TextDecoder().decode(start);
   const nl = text.indexOf('\n', MAGIC.length);
   const len = Number(text.slice(MAGIC.length, nl));
+  if (nl < 0 || !Number.isInteger(len) || len <= 0) throw new Error(BROKEN);
   const headStart = new TextEncoder().encode(text.slice(0, nl + 1)).length;
-  const head = JSON.parse(await file.slice(headStart, headStart + len).text());
   const base = headStart + len;
-  head.attachments = head.attachments.map(({ blobs = {}, ...a }) => {
+  if (base > file.size) throw new Error(BROKEN);
+  let head;
+  try {
+    head = JSON.parse(await file.slice(headStart, base).text());
+  } catch {
+    throw new Error(BROKEN);
+  }
+  // alle Bildausschnitte müssen innerhalb der Datei liegen – sonst NICHTS löschen
+  for (const a of head.attachments ?? []) {
+    for (const b of Object.values(a.blobs ?? {})) {
+      if (!(b.offset >= 0 && b.size >= 0 && base + b.offset + b.size <= file.size)) throw new Error(BROKEN);
+    }
+  }
+  head.attachments = (head.attachments ?? []).map(({ blobs = {}, ...a }) => {
     for (const [f, b] of Object.entries(blobs)) a[f] = file.slice(base + b.offset, base + b.offset + b.size, b.type);
     return a;
   });
@@ -46,7 +61,12 @@ async function readV2(file) {
 }
 
 async function readV1(file) {
-  const data = JSON.parse(await file.text());
+  let data;
+  try {
+    data = JSON.parse(await file.text());
+  } catch {
+    throw new Error('Das ist keine Sicherungsdatei dieser App (oder sie ist beschädigt). Es wurde nichts verändert.');
+  }
   for (const a of data.attachments ?? []) {
     for (const f of BLOB_FIELDS) if (typeof a[f] === 'string') a[f] = await (await fetch(a[f])).blob();
   }
