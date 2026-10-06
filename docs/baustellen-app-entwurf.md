@@ -1,148 +1,194 @@
-# Baustellen-Notizen-App (iPad) – Entwurf & Machbarkeitsanalyse
+# Baustellen-Protokoll-Assistent (iPad) – Entwurf v2
 
-Stand: 2026-10-06 · Status: Entwurf, nichts implementiert · Sprache: Deutsch
+Stand: 2026-10-06 · Status: Entwurf, nichts implementiert · v1 liegt in der Git-Historie
 
-## 1. Kurzfazit
+**Was sich gegenüber v1 geändert hat:** v1 plante eine native iPad-App, die alles kann. Nach vier parallelen
+Recherchen (offizielle Forma-App, API-Nachprüfung, Diktat/Spracherkennung, Rechtslage) ist das überholt:
 
-| Frage | Antwort |
-|---|---|
-| Machbar? | Ja – aber **nicht** so, wie die Zielvorstellung „alles direkt in Forma Build schreiben" es verlangt. |
-| Größter Blocker | Für **Besprechungen (Meetings)** gibt es **keine öffentliche API**. Eine interne API existiert, ist für Kunden nicht freigegeben; ein Community-Wunsch dazu ist offen. |
-| Daily Log / Bautagebuch | Machbar über die **Forms API** (Template-Typ `daily-log`, Formulare anlegen und Werte schreiben). Nur für Nicht-PDF-Formulare. |
-| Fotos | **Photos API ist (nach meinem Stand) read-only.** Fotos lassen sich stattdessen in Docs-Ordner hochladen oder an Issues/Formulare anhängen – erscheinen dann aber **nicht** im Photos-Tool. |
-| Empfohlene Plattform | Native iPadOS-App (Swift/SwiftUI, PencilKit). PWA/Cross-Platform ist für Apple-Pencil + Audio + Offline die schlechtere Wahl. |
-| Größtes Projektrisiko | Nicht die Technik, sondern (a) Einwilligung zur Tonaufnahme (DSGVO/§ 201 StGB), (b) Freigabe der Integration durch den ACC-Account-Admin, (c) fehlende Mac/Xcode-Umgebung zum Bauen. |
+1. Die **offizielle Forma-App deckt Bautagebuch, Fotos mit Einzeichnung, Mängel mit Plan-Pin und Plan-Markups bereits ab.** Das nachzubauen wäre verschwendete Arbeit.
+2. Die echte Lücke ist das **Besprechungs- und Begehungsprotokoll**: schnell per Diktat erfassen, Skizze dazu, prüfen, an Firmen versenden, in Forma ablegen.
+3. **Kein Mitschnitt aller Teilnehmer**, sondern du diktierst das Ergebnis je Tagesordnungspunkt selbst. Das ist rechtlich am saubersten und technisch am zuverlässigsten.
+4. **Web-App statt nativer App.** Ohne Mac/Xcode ist eine native App nicht baubar. Die Web-App läuft im Safari auf dem iPad, nutzt die Diktiertaste der iPad-Tastatur und den Apple Pencil, und ich kann sie in dieser Umgebung bauen und testen. Sie passt auf den bestehenden Stack dieses Repos (Node, Express, SQLite).
 
-**Kritik an der Aufgabenstellung:** „Aufnehmen + Skizzieren + Foto-Markup + Transkription + KI-Protokoll + Sync nach ACC (Meetings, Bautagebuch, Fotos)" ist kein MVP, sondern ein Produkt. Wer alles gleichzeitig baut, hat nach Monaten nichts Verlässliches. Siehe Phasenplan (Kap. 7).
+---
 
-## 2. Was Forma Build heute bietet (Zielsystem)
+## 1. Analyse deiner Stellungnahme
 
-ACC heißt inzwischen Autodesk Forma (Build = Forma Build). Relevante Module:
+| Deine Aussage | Bewertung | Konsequenz |
+|---|---|---|
+| „Schau auf meinem iPad nach“ | Nicht möglich. Ich laufe in einem Cloud-Container ohne Verbindung zu iPad oder Computer. | Bitte selbst nachsehen: **Einstellungen → Allgemein → Info** (Modellname, iPadOS-Version). Für die Web-App ist das Modell zweitrangig; relevant wird es erst für KI auf dem Gerät (ab M1 bzw. iPad mini A17 Pro). |
+| „Ich bin ACC-Account-Admin“ | Gut, damit kannst du die Integration selbst freischalten. Der Bereich heißt inzwischen **Hub Admin**. | Freischaltung unter Hub Admin → Custom Integrations (Kap. 4). |
+| „Forma-Stufe? Nie gehört“ | Gemeint ist die gekaufte Lizenz. **Forma Build** hat Meetings. **Forma Build Essentials** hat Forms, Fotos und Issues, aber **keine Meetings**. **Forma Data Management** (früher Docs) hat keins davon. | Prüfen: Web → Produktauswahl **Hub Admin → Subscriptions**. |
+| „Keine vertraulichen Gespräche, Inhalt geht ohnehin per Mail raus“ | Entlastet beim Datenschutz und erlaubt den Einsatz einer Cloud-KI. **Strafrechtlich trägt das Argument nicht.** § 201 StGB schützt die Entscheidung jedes Sprechers, ob sein Wort aufgezeichnet wird, nicht die Geheimhaltung des Inhalts. Eine Baubesprechung mit geladenen Firmen ist „nichtöffentlich“. | Kap. 5. Du hast das selbst schon erkannt und eine Variante ohne Audiospeicherung vorgeschlagen; die ist besser, die Diktat-Variante ist noch besser. |
+| „Nur die Zusammenfassung speichern, nicht das Gespräch“ | Gangbar (Variante C), in DE aber **mittleres Risiko**: Die überwiegende Literatur sieht reine Verarbeitung im Arbeitsspeicher nicht als „Aufnahme“, Rechtsprechung dazu fehlt. **Achtung: Die iPad-Notizen-App speichert bei der Transkription die Audiodatei. Das ist Variante A, nicht C.** | C nur als optionale Zusatzfunktion; Hauptweg ist das eigene Diktat (B). |
+| „Unklares markieren wir als ‚können wir uns nicht mehr erinnern‘, Vorabzug“ | Gute Praxis, mit einer Lücke: **Die gefährlichen Fehler sind plausible falsche Werte** (15.10. statt 5.10., Meier statt Maier), die niemand als unklar erkennt. | Automatische Prüfung (Kap. 7.3). Ein „Vorabzug“ hat vermutlich **keine** Bestätigungswirkung, also braucht es eine Endfassung mit Einwendungsfrist. |
+| „Diktat am Computer per Shift, lernt aus meiner Sprache“ | Welches Tool das ist, ist unbekannt. **Die Stimme lernt nur Dragon.** Wispr Flow, Superwhisper, Aqua Voice und Windows Voice Access lernen nur **Wörter** (Vokabelliste). Win+H, M365-Diktat und Whisper lernen gar nichts. Ein Kandidat mit Shift ist **Windows Voice Access (Alt+Shift+B)**. | Ein Stimmprofil lässt sich auf kein iPad übertragen. Was sich übertragen lässt, ist eine **gemeinsame Begriffsliste** (Kap. 6). |
 
-- **Meetings**: Agenda, Notizen je Punkt, Anwesenheit, Aktionspunkte (offene wandern ins Folgemeeting), Verknüpfung mit Dokumenten/Plänen/Issues/RFIs, Vorlagen (OAC, Toolbox-Talk …), PDF-Export. ([Autodesk](https://construction.autodesk.com/tools/construction-meeting-records/), [Vorlagen](https://www.autodesk.com/blogs/construction/have-you-tried-it-meeting-templates-in-autodesk-build/))
-- **Forms** inkl. Template-Typ Daily Log (Wetter, Personal/Stunden je Firma, Notizen, Fotos). ([Forms API](https://aps.autodesk.com/blog/first-autodesk-construction-cloud-acc-specific-api-forms-api))
-- **Photos** (neue Version seit 24.03.2026, Alben) ([Autodesk](https://www.autodesk.com/support/technical/article/caas/sfdcarticles/sfdcarticles/How-to-activate-the-new-version-of-Photos-tool-in-Autodesk-Forma-Build-for-old-projects.html))
-- **Issues**, Docs (Project Files), Sheets, RFIs, Submittals.
-- **Autodesk Assistant**: seit 2026 aus der Beta, Meeting-Minutes sind Datenquelle des Project-Data-Agents, kann Meeting-Zusammenfassungen erzeugen. ([Autodesk](https://www.autodesk.com/blogs/construction/meet-autodesk-assistant-ai-native-intelligence-in-forma/)) → Autodesk bewegt sich in deine Richtung; Wettbewerbsrisiko für den KI-Teil.
+## 2. Kaufen statt bauen: Was die offizielle Forma-App heute kann
 
-## 3. API-Realität (entscheidend)
+Basis: Autodesk-Hilfe, gelesen über das Autodesk-Help-MCP, Stand 10/2026.
 
-| Funktion | API vorhanden? | Schreiben möglich? | Konsequenz für die App |
+| Bedarf | Offizielle iPad-App | Bewertung |
+|---|---|---|
+| **Bautagebuch** | Forms mit Daily-Log-Vorlage: ausfüllen, Fotos, Unterschrift, **Wetter automatisch** (Apple WeatherKit, Projektstandort), PDF, offline mit späterem Sync | **Nicht nachbauen.** Freitext per iPad-Diktiertaste. |
+| **Fotos mit Einzeichnung** | Aufnahme, Alben, Tags, GPS, Freihand-Markup (als Kopie, das Original bleibt) | **Nicht nachbauen.** |
+| **Mängel / Issues** | Anlegen mit **Pin auf dem Plan**, Foto mit Zeichnung, Zuweisung an eine Firma | **Nicht nachbauen.** Bei Begehungen Mängel direkt hier erfassen. Die API kann **keine** Plan-Pins setzen, die App schon. |
+| **Skizze auf Plan** | Stift, Textmarker, Formen, Text, Wolke | Vorhanden. |
+| **Leere Skizzenseite** | Nein. Umweg: ein leeres PDF hochladen und darauf zeichnen | **Lücke**, die die eigene App schließt. |
+| **Meetings auf dem iPad** | Ansehen, anlegen, Themen bearbeiten. **Anwesenheit, Aktionspunkte mit Zuweisung, PDF-Export und Versand sind nur im Web dokumentiert.** Offline nur lesbar. | **Hauptlücke.** |
+| **Versand an Firmen** | Meetings: nur im Web („Share with invitees/non-members“). Forms: Link oder iOS-Teilen-Menü. | Lücke. |
+| **Sprache** | Nur das normale iPad-Diktat. KI-Issue-Erfassung ist private Beta (EBA/Unlimited). Der „Daily Log Agent“ (gesprochener Bericht wird Bautagebuch) ist auf der AU 2026 als *coming soon* angekündigt, der neue Assistant für 2027. | Autodesk arbeitet daran. Was wir beim Bautagebuch bauen, könnte bald überholt sein; ein Grund mehr, dort nichts zu bauen. |
+
+**Zuerst ohne Code testen** (Phase 0): Öffne Forma Meetings im **Safari auf dem iPad** (Web-Oberfläche, nicht die App) und probiere aus, ob Anwesenheit, Aktionspunkte und Versand dort brauchbar sind. Wenn ja, schrumpft die eigene App auf ein Diktat- und Skizzenwerkzeug. Ungetestet, Konfidenz niedrig.
+
+## 3. API-Realität (nachgeprüft)
+
+Methodik: APS-Seiten waren für den direkten Abruf gesperrt. Grundlage sind Suchauszüge, die offiziellen Postman-Collections auf GitHub und die Autodesk-Hilfe.
+
+| Fähigkeit | Status | Konfidenz |
+|---|---|---|
+| Meetings schreiben | **Nein.** Eine interne API existiert, die Community-Idee steht seit 27.05.2026 auf „Gathering Support“. Lesend über den Data Connector (`meetingminutes_meetings.csv`). | mittel–hoch |
+| Forms anlegen | Ja (`POST …/form-templates/{id}/forms`), Start im Status *draft* | hoch |
+| Forms-Werte schreiben | Nur Web-Formulare (nicht PDF): Text, Zahl, Datum, Schalter, **Unterschrift** (`svgVal`), Tabellen **Work Log (Personal), Material, Geräte**; eigene Tabellen über v2 (Beta seit 30.03.2026) | hoch |
+| Forms abschließen | `PATCH status=submitted` | hoch |
+| **Legacy-Forms-Endpunkte** | **Entfallen am 31.12.2026**, also direkt auf v2 aufbauen | hoch |
+| Form-Vorlagen per API | Nein, nur im Web anlegen | hoch |
+| Wetter | Nur lesbar (Beta) | hoch |
+| Fotos/Anhänge an Formulare | Kein Upload-Endpunkt; eventuell Verknüpfung über die Relationship-API | niedrig–mittel |
+| Photos-Modul schreiben | **Nein**, weiterhin nur lesend | hoch |
+| Issues | Anlegen, ändern, kommentieren, **bis 200 Anhänge**, `locationId`, **Zuweisung an eine Firma** (Forma mailt dann an alle Mitglieder der Firma; ob das bei API-Anlage auch passiert, ist ungetestet). **Keine Plan-Pins** (offiziell). | hoch |
+| Dateien nach Files | Ja (Data Management: Storage → signierte S3-URL → Version). Für DEU/EMEA-Projekte eventuell mit Region-Angabe. | hoch / Region: mittel |
+| Login | OAuth mit PKCE ohne Client Secret (App-Typ „Desktop, Mobile, Single-Page App“). Access Token 60 min, Refresh Token 15 Tage, rotiert bei jeder Nutzung. | hoch / mittel |
+| Freischaltung | Hub Admin → Custom Integrations → Add → APS Client ID | hoch |
+| Externe Konnektoren | **Forma Connect** (Workato, separat lizenziert). Kein zertifizierter Power-Automate- oder Zapier-Connector. | mittel–hoch |
+
+## 4. Recht: Varianten der Spracherfassung
+
+Faktenlage, keine Rechtsberatung. DE und AT wurden geprüft, weil das Land nicht feststeht; Maßstab ist das strengere deutsche Recht.
+
+| Variante | Deutschland | Österreich | Risiko |
 |---|---|---|---|
-| **Meetings / Baubesprechungen** | Nein (nur intern) | **Nein** | Kein natives Anlegen. Workaround: Protokoll als PDF in Docs hochladen + Aktionspunkte als Issues anlegen (Kap. 5). Folgemeeting-Automatik, Anwesenheit, Agenda gehen **nicht**. Quelle: [Community-Idee „Public Meeting Minutes API"](https://forums.autodesk.com/t5/forma-for-construction-ideas/public-meeting-minutes-api/idi-p/14143699) |
-| **Daily Log / Bautagebuch** | Ja, über Forms API | Ja (Formulare anlegen + Werte ändern, nur Nicht-PDF) | Template in Forma muss **vorher** existieren; App füllt es. [Forms Write API](https://aps.autodesk.com/blog/autodesk-build-forms-write-api), [POST forms](https://aps.autodesk.com/en/docs/acc/v1/reference/http/forms-forms-POST) |
-| **Issues** (Mängel, Aufgaben) | Ja | Ja, inkl. Anhänge (storage object → Upload → Attachment registrieren, 3-legged, `data:write`) | Gute Zielstruktur für Aktionspunkte/Mängel mit Foto. [Tutorial](https://aps.autodesk.com/en/docs/bim360/v1/tutorials/issuesv2/attach-local-attachment-issues-v2). Pushpin-/Plan-Issues laut Doku **nicht** unterstützt. |
-| **Fotos (Photos-Tool)** | Ja | **Nein** (nur `POST photos:filter`, `GET photos/:id`, 3-legged) | [Photos API](https://aps.autodesk.com/blog/autodesk-build-photos-api). Upload war „in naher Zukunft" angekündigt – **vor Planung erneut prüfen**. |
-| **Dokumente (Docs/Project Files)** | Ja (Data Management) | Ja (Storage-Objekt → signierte S3-URL → Item/Version) | Hier landen PDF-Protokolle, Skizzen, Original-/Markup-Fotos. [Tutorial](https://aps.autodesk.com/en/docs/acc/v1/tutorials/files/download-document-s3) |
+| **A: Mitschnitt aller** (auch die iPad-Notizen-App) | Ohne Einwilligung aller strafbar (§ 201 Abs. 1 Nr. 1 StGB, **kein Teilnehmerprivileg**). Dazu DSGVO: Externe müssen einwilligen und ohne Aufnahme teilnehmen können. | Aufnahme durch einen Teilnehmer ist straffrei (§ 120 Abs. 1), die Weitergabe der *Tonaufnahme* nicht (Abs. 2). Zivilrechtlich rechtswidrig ohne Zustimmung (OGH 6 Ob 190/01m). | DE hoch, mit dokumentierter Einwilligung mittel–niedrig |
+| **B: Du diktierst nur dich selbst** | Kein „Wort eines anderen“, also kein § 201 | Kein § 120 | **niedrig** |
+| **C: Live-Mitschrift, kein Audio gespeichert** | Herrschende Literatur: flüchtige Verarbeitung ist keine „Aufnahme“. Keine Rechtsprechung. Das Tool darf technisch nichts zwischenspeichern. DSGVO gilt voll. | unkritisch | DE mittel |
 
-**Auth:** 3-legged OAuth (Benutzerkontext) ist für Photos/Issues-Anhänge/Forms-Schreiben nötig. Für eine iPad-App: Authorization Code + **PKCE**, Tokens im Keychain. **Der ACC-Account-Admin muss die Integration (Client ID) unter „Custom Integrations" freischalten** ([Hilfe](https://help.autodesk.com/cloudhelp/ENU/Docs-Admin/files/account-administration/Custom_Integrations.html)) – ohne das läuft nichts. Prüfen: Rechte des eingeloggten Nutzers begrenzen, was die App darf (gut).
+**Beweiswert:** In DE wirkt das Baustellenprotokoll wie ein kaufmännisches Bestätigungsschreiben (BGH VII ZR 186/09): Wer schweigt, stimmt zu, und das kann den Vertrag ändern. In AT ist der OGH zurückhaltender. **Das geprüfte Protokoll mit Einwendungsfrist ist das rechtlich wirksame Instrument, nicht eine Aufnahme.**
 
-**Nicht verifiziert (aps.autodesk.com war aus meiner Umgebung per Fetch gesperrt, Aussagen stammen aus Suchergebnissen):**
-- ob Forms-Anhänge (Fotos) per API an Formulare gehängt werden können,
-- ob Form-Templates per API anlegbar sind (vermutlich nicht → in der UI vorbereiten),
-- Region-Header/EMEA-Datenhaltung für deutsche Projekte,
-- aktueller Stand Photos-API-Upload,
-- ob Meetings-API inzwischen freigegeben wurde.
-→ **Spike 1 (1–2 Tage, Postman-Collection von Autodesk) klärt das vor jeder App-Zeile.** ([Postman-Collection Build](https://github.com/autodesk-platform-services/aps-autodesk.build.api-postman.collection/))
+**Festlegung:** B ist der Hauptweg. C ist optional, mit Ansage zu Beginn („Live-Mitschrift fürs Protokoll, es wird kein Ton gespeichert“). A wird nicht umgesetzt.
 
-## 4. Funktionen der App
+## 5. Diktat: Was geht auf dem iPad
 
-### 4.1 Aufnahme
-- Audio mit `AVAudioEngine`, Hintergrundmodus „audio", chunkweise auf Platte (Absturz-/Akku-sicher), Pause/Fortsetzen, Marker per Tipp („Beschluss", „Mangel").
-- **Zeitindex**: Jeder Skizzenstrich, jede Textnotiz und jedes Foto bekommt den Audio-Zeitstempel (wie Notability/GoodNotes „Recording"). Tippen auf Strich → Audio springt zur Stelle. Das ist der eigentliche Mehrwert gegenüber Einzel-Apps.
-- **Transkription on-device**: `SpeechAnalyzer`/`SpeechTranscriber` (iPadOS 26, Deutsch unterstützt). Ein unabhängiger Benchmark sah ihn bei Deutsch vor WhisperKit (6,7 % WER, Testset gemischt) – aber: **Baustellenlärm, Dialekt und Fachbegriffe (Bewehrung, Estrich, Brandschott) sind schlechter als Benchmarks**; Eigenvalidierung mit echten Aufnahmen nötig. ([addpipe](https://blog.addpipe.com/apple-speechanalyzer-api/), [Vergleich](https://rohitraj.tech/en/notes/apple-speechanalyzer-vs-whisper-on-device-stt-2026)) **Keine Sprechertrennung** in keiner dieser Engines → bei Meetings selbst lösen (separat, fehleranfällig) oder darauf verzichten und Sprecher manuell zuordnen.
-- Fachwortliste (Custom Vocabulary/Kontext) pro Projekt.
-
-### 4.2 Skizzen & Foto-Markup
-- `PencilKit` (Canvas, Radierer, Lineal, Pencil Pro-Gesten). Skizzen als Vektor (`PKDrawing`) speichern, für Export als PNG/PDF rendern.
-- Fotos: `AVCaptureSession`/`PHPicker`; Markup = `PKCanvasView` über dem Foto, **Original bleibt unverändert**, Markup als Ebene; Export flatten. Optional: Maßstab/Kalibrierung für Messen im Foto (spätere Phase).
-- Optional: Plan-PDF als Hintergrund (aus Docs geladen), Skizze/Foto als Pin darauf → Voraussetzung für Plan-bezogene Issues; **Issues-API unterstützt Pushpins laut Doku nicht**, daher Ortsbezug nur als Text/Location-Feld.
-
-### 4.3 Auswertung (KI) – mit Pflichtprüfung
-- Aus Transkript + Notizen: Teilnehmer, Beschlüsse, Aufgaben (Verantwortlicher, Frist), Mängel, offene Punkte.
-- LLM: on-device (Apple Foundation Models) für Datenschutz/Offline, oder Cloud-LLM (EU-Region, AVV). Entscheidung in Kap. 8.
-- **Nie automatisch hochladen.** Review-Bildschirm: jede Aufgabe/Beschluss mit Quelle (Transkript-Stelle + Audio-Sprung) bestätigen oder verwerfen. Begründung: Ein falsch zugeordneter Beschluss in einem Protokoll hat vertragliche Wirkung; LLM-Halluzinationen und Verwechslungen bei Zahlen/Terminen sind real.
-
-### 4.4 Sync zu Forma
-Siehe Kap. 5. Offline-first mit Outbox-Queue, Idempotenz (lokale UUID → gespeicherte Remote-ID), Wiederholung bei Fehlern, Token-Refresh.
-
-## 5. Mapping: App-Daten → Forma
-
-| App-Objekt | Ziel in Forma | Weg |
+| Weg | Fakten | Einsatz |
 |---|---|---|
-| Besprechungsprotokoll (Text, Beschlüsse, Teilnehmer) | **Docs**, Ordner z. B. `Projekt/Protokolle/<Datum>` als **PDF** (+ optional DOCX/JSON) | Data Management Upload |
-| Besprechungsprotokoll (strukturiert) | **Forms**, eigenes Template „Baubesprechung" (in Forma angelegt) | Forms API create + update (falls Template-Feldtypen reichen) |
-| Aktionspunkte / Mängel | **Issues** (Typ/Kategorie, Zuständiger, Fälligkeit, Beschreibung, Foto-Anhang) | Issues API + Attachment-Flow |
-| Bautagebuch | **Forms** Template-Typ `daily-log` | Forms API create + update |
-| Fotos (Original + markiert) | **Docs** `Fotos/<Datum>` ODER Anhang an Issue/Formular | Data Management / Issue-Attachment; *nicht* ins Photos-Tool (read-only) |
-| Skizzen | PNG/PDF in Docs, ggf. Anhang an Issue/Formular | wie oben |
-| Audio | **Standardmäßig nicht hochladen** (Datenschutz, Größe); nur Transkript nach Prüfung | – |
+| **Diktiertaste der iPad-Tastatur** | Funktioniert in jedem Textfeld, **auch in Safari-Web-Apps**. Deutsch auf dem Gerät, automatische Satzzeichen, kein Zeitlimit, stoppt nach ~30 s Stille. **Kein eigenes Vokabular.** | **Hauptweg** für „Festgehalten: …“ je Tagesordnungspunkt. Push-to-Talk ergibt sich von selbst: Feld antippen, Mikrofon, sprechen. |
+| Kontakte-Trick | Firmen, Personen und Fachbegriffe als Kontakte anlegen; das Diktat erkennt sie dann besser. Über iCloud wirkt das auch auf dem Mac. | Sofort umsetzbar, ohne Code. |
+| Scribble (Pencil-Handschrift wird Text) | Handschrift in Textfeldern wird umgewandelt, auch in Safari | Ergänzung, wenn Sprechen unpassend ist. |
+| SpeechAnalyzer / DictationTranscriber | Nur für **native** Apps. DictationTranscriber nimmt bis zu **100 Fachbegriffe** als Kontext; SpeechTranscriber nimmt kein eigenes Vokabular und hat Hardware-Hürden. | Nur relevant, falls später nativ (Phase 5). |
+| „Verbessertes Diktat“ (iPadOS 27) | **Nur Englisch**, ab M4 mit 12 GB | Irrelevant. |
+| Wispr Flow / Superwhisper (Tastatur-Apps) | Wispr Flow: Wörterbuch wird über Geräte **synchronisiert**, nur Cloud, auf dem iPad nur die iPhone-App. Superwhisper: Vokabelliste pro Gerät, keine Synchronisierung. | Nur sinnvoll, wenn dein Computer-Tool eines davon ist. |
+| Dragon | Lernt die Stimme, nur unter Windows. **Dragon Anywhere (iOS) gibt es seit 01.07.2026 nicht mehr.** | Kein Weg aufs iPad. |
 
-**Ehrliche Bewertung:** Das Ergebnis ist ein „Protokoll-PDF im Dokumentenordner" statt einer „Baubesprechung im Meetings-Tool". Für Abnehmer (Bauherr, ÖBA) ist das oft ausreichend, aber Meetings-Features (Folgemeeting, Anwesenheitsliste, Verlauf, Assistant-Suche über Meetings) fehlen. Sollte Autodesk die Meetings-API freigeben, ist die Sync-Schicht (Kap. 6) austauschbar gestaltet.
+**„Verbinden“ mit deinem Computer-Diktat** heißt realistisch: Wir führen **eine gemeinsame Begriffsliste** (Firmen, Personen, Gewerke, Abkürzungen, Achsbezeichnungen). Daraus speisen sich drei Dinge: die iPad-Kontakte, die Vokabelliste deines Computer-Tools (falls es eine hat) und die **KI-Nachkorrektur in der App** (Kap. 7.3). Dafür müssen wir wissen, welches Tool es ist.
 
-## 6. Architektur
+**Mikrofon:** Ein Ansteckmikrofon mit Windschutz bringt bei Baustellenlärm mehr als jede Software (Headset ~12 % gegenüber ~17 % Wortfehlerrate mit Raummikrofon, englische Studie). Bei Variante B sprichst du nah am iPad, das reicht meist.
+
+## 6. Architektur v2: Web-App
 
 ```
-┌────────────── iPadOS-App (SwiftUI, iPadOS 26+) ──────────────┐
-│ UI: Meeting-Workspace (Audio · Notizen · PencilKit · Fotos)  │
-│ Domain: Meeting, Segment(Transkript), Note, Sketch, Photo,   │
-│         ActionItem, DailyLog, Participant                    │
-│ Persistenz: SwiftData/SQLite + Dateien (Audio, Bilder)       │
-│ Services: AudioRecorder · Transcriber · Extractor(LLM)       │
-│           ExportService (PDF) · SyncEngine (Outbox)          │
-│ ForgeBackends (Protokoll): ACCDocsExporter, ACCIssuesSync,   │
-│    ACCFormsSync, [ACCMeetingsSync – nicht verfügbar]         │
-│ Auth: ASWebAuthenticationSession + PKCE, Keychain            │
-└───────────────────────────┬──────────────────────────────────┘
-                            │ HTTPS (APS, 3-legged)
-                  Autodesk Forma / APS
+iPad (Safari, als Web-App auf dem Home-Bildschirm)
+ ├─ Protokoll-Editor: Tagesordnungspunkte, „Festgehalten“-Felder (iPad-Diktat), Status, Zuständig, Frist
+ ├─ Skizzenseite: Canvas + Apple Pencil (Druck, Neigung über Pointer Events)
+ ├─ Fotos: Kamera über <input capture>, Markup im Canvas (Original bleibt)
+ ├─ Lokaler Zwischenspeicher: IndexedDB (Entwurf geht bei Funkloch nicht verloren)
+ └─ Teilen: PDF über das iOS-Teilen-Menü → Outlook
+        │ HTTPS
+Server (bestehender Stack dieses Repos: Node, Express, SQLite; Hosting in der EU)
+ ├─ Login (vorhanden, wird ausgebaut)
+ ├─ Projekte, Teilnehmer, Firmen, Begriffsliste, Protokolle, offene Punkte
+ ├─ KI-Strukturierung + Nachkorrektur (API-Schlüssel nur auf dem Server)
+ ├─ Prüfung ohne KI: Zahlen, Daten, Namen gegen den diktierten Text
+ ├─ PDF-Erzeugung (Vorabzug / Endfassung)
+ ├─ Forma-Anbindung (Phase 2): OAuth PKCE, Upload nach Files, Issues für Aufgaben
+ └─ optional: Versand über Microsoft Graph (Outlook) statt Teilen-Menü
 ```
 
-- Kein eigener Server nötig (weniger Betrieb, weniger DSGVO-Fläche). Server wird erst bei Cloud-LLM-Proxy, Teamfunktionen oder Admin-Konfiguration relevant.
-- Jede Forma-Anbindung hinter einem Protokoll → Mock für Tests, Austausch bei API-Änderung.
-- Projekt-/Ordner-/Template-Konfiguration pro Baustelle einmalig (Mapping Hub/Projekt/Ordner/Form-Template/Issue-Typ).
-- Mehrsprachigkeit der Forma-Felder: Template-/Feldnamen sind projektspezifisch → Mapping konfigurierbar, nicht hartcodiert.
+**Warum Web statt nativ:**
 
-## 7. Phasenplan
-
-| Phase | Inhalt | Ergebnis / Abbruchkriterium |
+| Kriterium | Web-App | Native App |
 |---|---|---|
-| **0 – Spike (1–2 Tage)** | Postman: Login, Forms create daily-log, Docs-Upload, Issue + Foto-Anhang; Photos-Upload & Meetings-API erneut prüfen; Admin-Freigabe der Custom Integration klären | Wenn Forms-Write oder Admin-Freigabe scheitert → Konzept ändern, bevor Code entsteht |
-| **1 – Aufnahme-Kern** | Meeting anlegen, Audio, Zeitindex-Notizen, PencilKit, Foto + Markup, lokal, PDF-Export | Offline vollständig nutzbar; Teilen per Dateien/Mail |
-| **2 – Forma-Export** | Auth, Upload Protokoll-PDF + Skizzen/Fotos nach Docs, Issues aus Aktionspunkten | Ein echtes Protokoll landet ohne Handarbeit in Forma |
-| **3 – Bautagebuch** | Daily-Log-Formular befüllen (Wetter automatisch, Personal je Firma, Fotos, Notizen), „Kopie vom Vortag" | Ersetzt Handeingabe im Browser |
-| **4 – Transkription + KI-Extraktion** | On-device Transkript, Review-UI, Vorschläge für Beschlüsse/Aufgaben | Messbar: Zeitersparnis vs. Fehlerquote auf echten Aufnahmen |
-| **5 – Erweiterungen** | Plan-Hintergrund, Photos-Upload (wenn API da), Meetings-API (wenn da), Mehrbenutzer | – |
+| Baubar ohne Mac/Xcode | **Ja**, und hier testbar | Nein (Mac + Apple-Developer-Programm 99 $/Jahr) |
+| Diktat | iPad-Tastatur (gleiche Engine), ohne Vokabular | DictationTranscriber mit 100 Begriffen |
+| Apple Pencil | Gut (Druck, Neigung); kein PencilKit-Komfort | PencilKit, bestes Schreibgefühl |
+| Offline | Eingeschränkt. Safari kann Speicher nicht installierter Seiten nach 7 Tagen ohne Nutzung löschen; als Web-App auf dem Home-Bildschirm gilt das laut WebKit nicht (vorher prüfen). Deshalb sofort zum Server synchronisieren. | Zuverlässig |
+| Verteilung, Updates | Link genügt, Updates sofort | TestFlight oder App Store |
 
-Reihenfolge bewusst: Transkription/KI **nach** dem Export, weil Skizzen/Fotos/Bautagebuch sofort Nutzen bringen und der KI-Teil das riskanteste und rechtlich heikelste ist.
+Die Web-App reicht für Variante B vollständig, weil die Spracherkennung von der iPad-Tastatur kommt und nicht von der App. Nativ lohnt erst, wenn sich in der Praxis zeigt, dass Vokabular oder Offline-Betrieb fehlen.
 
-## 8. Risiken & offene Entscheidungen
+**KI-Anbieter:** Die Gespräche sind nicht vertraulich, daher ist eine Cloud-KI vertretbar. Sie verarbeitet aber Namen von Personen, also braucht es einen Auftragsverarbeitungsvertrag und möglichst Verarbeitung in der EU. Das EU-US Data Privacy Framework steht seit 07/2026 unter Druck (EDPB-Überprüfungsantrag). Konkreten Anbieter erst in Phase 3 festlegen.
 
-1. **Tonaufnahme rechtlich (Deutschland):** Heimliche/ungefragte Aufnahme von nichtöffentlich gesprochenem Wort ist strafbar (§ 201 StGB); zusätzlich DSGVO (Zweckbindung, Löschfristen, Betriebsrat bei Beschäftigten). → Einwilligungs-Screen mit Protokollierung, Aufnahme-Indikator, Standard „Audio nach Transkription löschen". *Keine Rechtsberatung – mit Datenschutzbeauftragten klären.*
-2. **Online-Meetings (Teams/Zoom):** iPadOS erlaubt keinen einfachen Systemaudio-Abgriff. Realistisch: Lautsprecher + Mikro (schlechte Qualität, eigene Stimme/Kopfhörer-Problem), oder das Transkript der Plattform nutzen (Teams-Transkript, Microsoft-365-Anbindung). Für den Anwendungsfall „Online-Besprechungen" daher Importfunktion für Transkripte statt Mitschnitt einplanen. *(Einschätzung aus Plattformwissen, nicht gesondert verifiziert.)*
-3. **Cloud-LLM vs. on-device:** Cloud = bessere Qualität, aber Personenbezug/Vertraulichkeit (Bauherrenvertraulichkeit, AVV, EU-Hosting). On-device = datenschutzfreundlich, schwächere Extraktion. Empfehlung: on-device als Standard, Cloud optional pro Projekt.
-4. **Autodesk-Konkurrenz:** Assistant erzeugt bereits Meeting-Zusammenfassungen im Tool. Differenzierung deiner App = Zeitindex-Skizzen + Foto-Markup + Offline + deutsche Fachwörter, nicht „KI-Protokoll" allein.
-5. **API-Stabilität:** Autodesk benennt/ändert Produkte und APIs häufig (BIM 360 → ACC → Forma). Adapter-Schicht und Versionspinning einplanen.
-6. **Distribution:** Apple-Developer-Programm nötig; für interne Nutzung TestFlight oder Apple Business Manager (Custom App). App-Store-Review bei Audioaufnahme: Datenschutzerklärung und Mikrofon-Zweckstring.
-7. **Build-Umgebung:** Eine iPad-App kann nur mit **Xcode auf einem Mac** gebaut/signiert werden. Diese Cloud-Umgebung (Linux) kann Swift-Code schreiben, aber **nicht kompilieren, nicht auf dem iPad testen**. Alternativ: Web-App (PWA) – lauffähig hier testbar, aber ohne PencilKit, mit eingeschränktem Hintergrund-Audio und schwächerem Offline. Für deinen Funktionsumfang ist PWA **keine** gleichwertige Lösung.
-8. **Lizenz:** Nutzt dein Unternehmen Forma **Build** oder nur Docs/Build Essentials? Forms/Issues/Meetings hängen am Produkt (Build Essentials enthält Daily Reports/Forms laut [Autodesk](https://www.autodesk.com/blogs/construction/forma-build-essentials-or-forma-build-comparison/)).
+## 7. Abläufe
 
-## 9. Was ich von dir brauche, um weiterzugehen
+### 7.1 Baubesprechung
+1. **Vorbereiten:** Neues Protokoll aus dem letzten. Offene Punkte wandern automatisch mit, wie bei Forma Meetings. Teilnehmerliste aus der Firmenliste. Anwesenheit abhaken.
+2. **Während:** Pro Tagesordnungspunkt ins Feld „Festgehalten“ tippen, diktieren: *„Firma Müller, Brandschott Achse 3, bis 15.10.“* Zuständig und Frist werden daraus vorgeschlagen, ändern geht per Tipp. Skizze oder Foto lassen sich dem Punkt zuordnen. Optional läuft eine Live-Mitschrift (Variante C) mit.
+3. **Danach:** Die KI glättet die Formulierungen und schlägt Zuständige und Fristen vor. Die Prüfung ohne KI markiert gelb, was nicht belegt ist. Du prüfst und gibst frei.
+4. **Vorabzug (optional):** PDF mit „VORABZUG“, offene Stellen als „[unklar – bitte ergänzen]“, an die Firmen zur Ergänzung.
+5. **Endfassung:** PDF mit Verteiler und Satz „Einwendungen binnen 5 Werktagen schriftlich, andernfalls gilt das Protokoll als genehmigt“. Versand über das Teilen-Menü → Outlook. Ab Phase 2 zusätzlich Ablage in Forma Files und Aufgaben als Issues, zugewiesen an die Firma.
+6. **Aufräumen:** Ein eventuelles Mitschrift-Transkript wird nach Ablauf der Einwendungsfrist automatisch gelöscht.
 
-1. Hast du einen Mac mit Xcode und Apple-Developer-Zugang (oder jemanden dafür)? → bestimmt, ob ich Swift-Code liefere oder ein Web-Prototyp.
-2. Bist du ACC-Account-Admin (oder erreichbar), um eine Custom Integration freizuschalten? Welche Region (EMEA)?
-3. Welche Forma-Produktstufe, und gibt es bereits ein Daily-Log-Template im Projekt?
-4. Wie sensibel sind die Gespräche (Bauherr, Rechtsstreit)? → on-device vs. Cloud-LLM.
-5. Ein Beispiel deines heutigen Bautagebuchs und Protokolls (anonymisiert), damit Mapping und PDF-Layout stimmen.
+### 7.2 Baubegehung
+- **Mängel in der offiziellen Forma-App** erfassen (Issue mit Plan-Pin, Foto, Zeichnung, Zuweisung an die Firma). Das kann die eigene App per API nicht besser.
+- **Bericht** in der eigenen App wie die Besprechung (Teilnehmer, Feststellungen, Skizzen). In Phase 2 werden die Issues der Begehung über die API gelesen und als Liste ins PDF übernommen.
 
-## Quellen
+### 7.3 Absicherung gegen KI- und Diktatfehler
+- **Regel für die KI:** Termine, Firmen, Mengen, Orte und Achsen werden nur aus dem diktierten Text übernommen. Fehlt etwas, schreibt sie „[unklar]“ und rät nie.
+- **Prüfung ohne KI:** Jede Zahl, jedes Datum und jeder Firmenname im Ergebnis muss im Diktat vorkommen, sonst wird er gelb markiert.
+- **Begriffsliste:** Die Nachkorrektur darf nur auf Begriffe aus der Liste korrigieren („Mayer Bau“ → „Maier Bau GmbH“). Jede Änderung wird sichtbar markiert.
+- **Freigabe:** Ohne deine Bestätigung wird nichts versendet und nichts zu Forma übertragen.
 
-- [Public Meeting Minutes API – Autodesk Community](https://forums.autodesk.com/t5/forma-for-construction-ideas/public-meeting-minutes-api/idi-p/14143699)
-- [Forma Meetings (Funktionen)](https://construction.autodesk.com/tools/construction-meeting-records/)
-- [Forms API](https://aps.autodesk.com/blog/first-autodesk-construction-cloud-acc-specific-api-forms-api), [Forms Write API](https://aps.autodesk.com/blog/autodesk-build-forms-write-api), [POST forms](https://aps.autodesk.com/en/docs/acc/v1/reference/http/forms-forms-POST)
-- [Photos API](https://aps.autodesk.com/blog/autodesk-build-photos-api)
-- [Issues: lokale Anhänge](https://aps.autodesk.com/en/docs/bim360/v1/tutorials/issuesv2/attach-local-attachment-issues-v2)
-- [Dateien in ACC (Data Management)](https://aps.autodesk.com/en/docs/acc/v1/tutorials/files/download-document-s3)
-- [Custom Integrations (Admin)](https://help.autodesk.com/cloudhelp/ENU/Docs-Admin/files/account-administration/Custom_Integrations.html)
-- [Autodesk Assistant](https://www.autodesk.com/blogs/construction/meet-autodesk-assistant-ai-native-intelligence-in-forma/)
-- [SpeechAnalyzer](https://blog.addpipe.com/apple-speechanalyzer-api/), [SpeechAnalyzer vs. Whisper](https://rohitraj.tech/en/notes/apple-speechanalyzer-vs-whisper-on-device-stt-2026)
+### 7.4 Bautagebuch
+Bleibt in der **offiziellen Forma-App** (Daily-Log-Formular mit automatischem Wetter, Freitext per Diktiertaste). Ein Eintrag aus der eigenen App heraus über Forms v2 ist technisch möglich, lohnt aber erst, wenn die offizielle App im Alltag zu langsam ist, und erst nach Autodesks angekündigtem Daily Log Agent.
+
+## 8. Phasenplan
+
+| Phase | Inhalt | Aufwand (grob) | Ergebnis / Abbruchkriterium |
+|---|---|---|---|
+| **0 – Ohne Code (diese Woche)** | Hub Admin → Subscriptions prüfen. Forma Meetings im iPad-Safari testen. Forma-App: Bautagebuch und Begehung je einmal mit Diktiertaste ausprobieren. Computer-Diktat-Tool identifizieren. 20 Fachbegriffe/Firmen als Kontakte anlegen. | 2–3 h | Klare Liste, was wirklich fehlt. Wenn Meetings im Safari genügen, schrumpft Phase 1 stark. |
+| **1 – Web-App MVP** | Projekte, Firmen, Teilnehmer, Protokoll mit Tagesordnungspunkten, Diktatfelder, offene Punkte übernehmen, Skizzenseite, Fotos, PDF (Vorabzug/Endfassung), Teilen. Kein Forma, keine KI. | 1–2 Wochen Sessions | Eine echte Baubesprechung damit protokolliert und versendet. |
+| **2 – Forma-Anbindung** | Custom Integration, OAuth, PDF nach Files, Aufgaben als Issues an Firmen, Issues der Begehung lesen. Vorher den Postman-Test (Kap. 9). | ~1 Woche | Protokoll liegt ohne Handarbeit in Forma. |
+| **3 – KI** | Strukturierung, Nachkorrektur mit Begriffsliste, Prüfung ohne KI, optional Live-Mitschrift (C). | ~1 Woche | Messen: Zeitersparnis gegenüber Fehlerquote an 5 echten Protokollen. |
+| **4 – Optional** | Versand über Microsoft Graph, Bautagebuch über Forms v2, Meetings-API (falls freigegeben), native App (falls Phase 1–3 Grenzen zeigen). | – | – |
+
+## 9. Postman-Test vor Phase 2
+
+1. Daily-Log-Vorlage finden, v2-Layout abrufen, Feld-IDs prüfen.
+2. Auswahlfelder und eigene Tabellen über v2 testen.
+3. Nach `status=submitted`: Kommen Mails? Gibt es weitere Status?
+4. Wetter: Lässt es sich überschreiben (erwartet: nein)?
+5. `relationships:writable`: Lassen sich Formular und Datei verknüpfen?
+6. Issue mit Foto-Anhang: Wird das Bild in Web und App angezeigt?
+7. Issue an eine Firma per API: Bekommen deren Mitglieder eine Mail?
+8. Plan-Platzierung (`linkedDocuments`, „Issue Placements“-Beta) bei Autodesk erfragen.
+9. DEU-/EMEA-Projekt: Forms/Issues ohne Region-Header, Upload mit Region.
+10. Ohne Freischaltung 403, nach Freischaltung Erfolg.
+
+## 10. Was ich von dir brauche
+
+1. **Hub Admin → Subscriptions:** Steht dort „Forma Build“ oder „Build Essentials“?
+2. **Computer-Diktat:** Name des Programms (Taskleiste unten rechts oder Startmenü). Windows oder Mac?
+3. **iPad-Modell** (Einstellungen → Allgemein → Info). Nicht kritisch, nur für spätere KI auf dem Gerät.
+4. **Ein anonymisiertes Beispiel** deines heutigen Besprechungsprotokolls (PDF/Word): Danach richte ich PDF-Layout und Felder aus.
+5. **Deutschland oder Österreich?** Ändert das Ergebnis kaum, aber die Klausel zur Einwendungsfrist.
+6. **Entscheidung:** Web-App auf Basis dieses Repos (empfohlen) oder doch nativ, wenn ein Mac beschafft wird.
+
+## Quellen (Auswahl)
+
+**Forma-App und Produkt** (Autodesk-Hilfe): Meetings mobil `help.autodesk.com/view/BUILD/DEU/?guid=Meetings_Mobile_App` · Meetings verwalten/teilen `?guid=Manage_Meetings` · Forms mobil `?guid=Submit_Forms_Mobile` · Wetter `?guid=Forms_Weather` · Fotos iOS `?guid=Photos_New_iOS` · Markups mobil `?guid=Markups_Mobile` · Vergleich Build/Essentials `?guid=Build_Essentials_Comparison`, [Autodesk-Blog](https://www.autodesk.com/blogs/construction/forma-build-essentials-or-forma-build-comparison/) · Hub Admin Subscriptions `help.autodesk.com/view/DOCS/ENU/?guid=Hub_Admin_Subscriptions` · [AU 2026 / Daily Log Agent](https://adsknews.autodesk.com/en/news/autodesk-forma-ai-aec-connected-workflows-2026/)
+
+**API:** [Public Meeting Minutes API (Idee)](https://forums.autodesk.com/t5/forma-for-construction-ideas/public-meeting-minutes-api/idi-p/14143699) · [Forms Write API](https://aps.autodesk.com/blog/autodesk-build-forms-write-api) · [Template Layout & Custom Table API](https://aps.autodesk.com/blog/forms-template-layout-and-custom-table-api-are-released) · [Photos API](https://aps.autodesk.com/blog/autodesk-build-photos-api) · [Issues-Anhänge](https://aps.autodesk.com/en/docs/bim360/v1/tutorials/issuesv2/attach-local-attachment-issues-v2) · [PKCE-App-Typen](https://aps.autodesk.com/blog/new-application-types) · [Regionen](https://aps.autodesk.com/blog/expanding-regional-offerings-uk-germany-japan-canada-and-india) · [Postman Build](https://github.com/autodesk-platform-services/aps-autodesk.build.api-postman.collection/) · [Custom Integrations](https://help.autodesk.com/cloudhelp/ENU/Docs-Admin/files/account-administration/Custom_Integrations.html)
+
+**Recht:** [§ 201 StGB](https://www.gesetze-im-internet.de/stgb/__201.html) · [BVerfG 1 BvR 1611/96](https://www.bundesverfassungsgericht.de/SharedDocs/Entscheidungen/DE/2002/10/rs20021009_1bvr161196.html) · [KI-Transkription und § 201](https://www.unternehmensstrafrecht.de/ki-transkription-und-%C2%A7-201-stgb/) · [GDD-Kurzpapier 4](https://www.gdd.de/wp-content/uploads/2026/01/GDD-Kurzpapier-4-Gespraechstranskription.pdf) · [§ 120 StGB AT](https://www.ris.bka.gv.at/Dokumente/Bundesnormen/NOR12039404/NOR12039404.html) · [OGH 6 Ob 190/01m](https://www.ris.bka.gv.at/JustizEntscheidung.wxe?Abfrage=Justiz&Dokumentnummer=JJT_20010927_OGH0002_0060OB00190_01M0000_000) · [BGH VII ZR 186/09 (Görg)](https://www.goerg.de/de/aktuelles/veroeffentlichungen/31-10-2014/vertragsaenderung-durch-schweigen-auf-baubesprechungsprotokoll) · [EDPB zu DPF](https://iapp.org/news/a/edpb-requests-review-of-eu-us-data-privacy-framework-following-trump-v-slaughter) · [Notizen-App Audio](https://appleinsider.com/inside/ios-18/tips/how-to-record-audio-and-create-transcripts-in-notes-in-ios-18)
+
+**Diktat:** [Dragon Accuracy Tuning](https://www.nuance.com/products/help/dragon1561/dragon-for-pc/enx/dpg-vla/Content/Accuracy/about_accuracy_tuning.htm) · [Dragon Anywhere eingestellt](https://www.getvoibe.com/resources/dragon-anywhere-discontinued/) · [Windows Voice Access](https://support.microsoft.com/en-us/accessibility/windows/voice-access/get-started-with-voice-access) · [Wispr Flow Dictionary](https://docs.wisprflow.ai/articles/4052411709-teach-flow-your-words-with-the-dictionary) · [Superwhisper iOS](https://superwhisper.com/docs/get-started/ios) · [Kontakte-Trick](https://tidbits.com/2026/05/15/tipbits-how-fake-contacts-can-fix-dictations-proper-noun-problems/) · [DictationTranscriber](https://developer.apple.com/documentation/speech/dictationtranscriber) · [SpeechTranscriber Hardware](https://developer.apple.com/forums/thread/801197) · [Notizen-Transkript Deutsch](https://support.apple.com/guide/ipad/record-and-transcribe-audio-ipadd0bde806/ipados) · [iPadOS 27 Diktat nur Englisch](https://www.macobserver.com/tips/round-ups/ios-27-dictation-spelling-punctuation-english-select-iphones/)
+
+**Nicht verifiziert** (Primärquellen gesperrt, nur Suchauszüge): AU-2026-Ankündigungen, Token-Laufzeiten, Region-Header, Placements-Beta, Mailversand bei API-Aktionen, Web-App-Speicherregel in Safari, Meetings-Web-Oberfläche auf dem iPad.
