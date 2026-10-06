@@ -1,6 +1,6 @@
 # Baustellen-Protokoll-Assistent (iPad) – Entwurf v2
 
-Stand: 2026-10-06 · Status: Entwurf, nichts implementiert · v1 liegt in der Git-Historie
+Stand: 2026-10-06 · Status: **Phase 1 umgesetzt („Feldtest 1“, siehe Abschnitt 0)** · v1 liegt in der Git-Historie
 
 **Was sich gegenüber v1 geändert hat:** v1 plante eine native iPad-App, die alles kann. Nach vier parallelen
 Recherchen (offizielle Forma-App, API-Nachprüfung, Diktat/Spracherkennung, Rechtslage) ist das überholt:
@@ -8,7 +8,28 @@ Recherchen (offizielle Forma-App, API-Nachprüfung, Diktat/Spracherkennung, Rech
 1. Die **offizielle Forma-App deckt Bautagebuch, Fotos mit Einzeichnung, Mängel mit Plan-Pin und Plan-Markups bereits ab.** Das nachzubauen wäre verschwendete Arbeit.
 2. Die echte Lücke ist das **Besprechungs- und Begehungsprotokoll**: schnell per Diktat erfassen, Skizze dazu, prüfen, an Firmen versenden, in Forma ablegen.
 3. **Kein Mitschnitt aller Teilnehmer**, sondern du diktierst das Ergebnis je Tagesordnungspunkt selbst. Das ist rechtlich am saubersten und technisch am zuverlässigsten.
-4. **Web-App statt nativer App.** Ohne Mac/Xcode ist eine native App nicht baubar. Die Web-App läuft im Safari auf dem iPad, nutzt die Diktiertaste der iPad-Tastatur und den Apple Pencil, und ich kann sie in dieser Umgebung bauen und testen. Sie passt auf den bestehenden Stack dieses Repos (Node, Express, SQLite).
+4. **Web-App statt nativer App.** Ohne Mac/Xcode ist eine native App nicht baubar. Die Web-App läuft im Safari auf dem iPad, nutzt die Diktiertaste der iPad-Tastatur und den Apple Pencil, und ich kann sie in dieser Umgebung bauen und testen. Sie passt auf den bestehenden Stack dieses Repos (Node, Express, SQLite). *(Überholt, siehe Abschnitt 0: gebaut als eigenständige App ohne Server.)*
+
+---
+
+## 0. Stand der Umsetzung und Entscheidungen (06.10.2026)
+
+**App:** https://chrissaringer-maker.github.io/Chris-CMS/ · Code im Zweig `claude/baustellen-protokoll-app`
+(veröffentlicht über `gh-pages`). Anleitung, Gerätetest und Wunschliste stehen dort in `README.md` und `WUNSCHLISTE.md`.
+
+| Entscheidung | Begründung |
+|---|---|
+| Eigenständige statische Web-App **ohne Server**, Daten nur in IndexedDB auf dem iPad | Kein Betrieb, keine Kosten, offline auf der Baustelle; Preis: Sicherung ist Pflicht, kein Abgleich zwischen Geräten |
+| Zuerst nur die Erfassung (Diktat, Fotos, Skizzen, PDF); **Schnittstellen zu Forma später** | Vorgabe des Nutzers; bis dahin PDF von Hand in Forma Files ablegen |
+| Diktat = **eigene Zusammenfassung**, kein Mitschnitt; Unklares als „unklar“ markieren; **Vorabzug vor Endfassung** | § 120 StGB, Beweiswert, Fehler von Spracherkennung abfangen |
+| Gesamtprotokoll an den ganzen Verteiler, optional je Firma „Ihre offenen Punkte“ | Vorschlag des Nutzers |
+| Nummer = **Leistungsgruppe.laufende Nummer** (z. B. 39.001–39.999), je Projekt, bleibt fix | Vorgabe des Nutzers (LB-HB) |
+| Einwendungsfrist **14 Tage ab Übermittlung**, Verfasser ist Pflicht | ÖNORM B 2110 – nur wirksam, wenn im Bauvertrag vereinbart |
+| **Querformat, Bedienung mit dem rechten Daumen:** Knopffeld unten rechts, Optik „iPad-nativ“ (Variante C) | Vorgabe des Nutzers |
+| **Funktionsstopp bis nach drei echten Besprechungen** | Prüfung (Masterdirektorium/Mastersekretariat), vom Nutzer bestätigt; Wünsche gehen auf die Wunschliste |
+
+**Am Gerät noch offen:** Funktioniert die Spracherkennung in der installierten Home-Bildschirm-App (sonst Tastatur-Diktat
+bzw. später Sprachnotiz + lokales Whisper)? Teilen großer PDFs an Outlook, Apple Pencil, Verhalten bei längerem Hintergrund.
 
 ---
 
@@ -194,7 +215,7 @@ Bleibt in der **offiziellen Forma-App** (Daily-Log-Formular mit automatischem We
 | Phase | Inhalt | Aufwand (grob) | Ergebnis / Abbruchkriterium |
 |---|---|---|---|
 | **0 – Ohne Code (diese Woche)** | Hub Admin → Subscriptions prüfen. Forma Meetings im iPad-Safari testen. Forma-App: Bautagebuch und Begehung je einmal mit Diktiertaste ausprobieren. Computer-Diktat-Tool identifizieren. 20 Fachbegriffe/Firmen als Kontakte anlegen. | 2–3 h | Klare Liste, was wirklich fehlt. Wenn Meetings im Safari genügen, schrumpft Phase 1 stark. |
-| **1 – Web-App MVP** | Projekte, Firmen, Teilnehmer, Protokoll mit Tagesordnungspunkten, Diktatfelder, offene Punkte übernehmen, Skizzenseite, Fotos, PDF (Vorabzug/Endfassung), Teilen. Kein Forma, keine KI. | 1–2 Wochen Sessions | Eine echte Baubesprechung damit protokolliert und versendet. |
+| **1 – Web-App MVP** ✅ *umgesetzt, im Feldtest* | Projekte, Firmen, Teilnehmer, Protokoll mit Tagesordnungspunkten, Diktatfelder, offene Punkte übernehmen, Skizzenseite, Fotos, PDF (Vorabzug/Endfassung), Teilen. Kein Forma, keine KI. | 1–2 Wochen Sessions | Eine echte Baubesprechung damit protokolliert und versendet. **Danach drei echte Besprechungen, erst dann neue Funktionen.** |
 | **2 – Forma-Anbindung** | Custom Integration, OAuth, PDF nach Files, Aufgaben als Issues an Firmen, Issues der Begehung lesen. Vorher den Postman-Test (Kap. 9). | ~1 Woche | Protokoll liegt ohne Handarbeit in Forma. |
 | **3 – KI + Live-Mitschrift** | Strukturierung, Nachkorrektur mit Glossar, Prüfung ohne KI. Live-Mitschrift über Azure (Kap. 5a) mit „❓ Begriff“ und Begriffsklärung. **Zuerst Praxistest:** Mikrofon bei Split View mit Forma, Diktiertaste neben laufendem Stream, LTE im Baucontainer. | ~1–2 Wochen | Wenn das Mikrofon beim App-Wechsel abbricht und Split View nicht reicht: Entscheidung native App (Mac nötig). |
 | **4 – Optional** | Versand über Microsoft Graph, Bautagebuch über Forms v2, Meetings-API (falls freigegeben), native App (falls Phase 1–3 Grenzen zeigen). | – | – |
@@ -215,12 +236,15 @@ Bleibt in der **offiziellen Forma-App** (Daily-Log-Formular mit automatischem We
 ## 10. Was ich von dir brauche
 
 1. **Hub Admin → Subscriptions:** Steht dort „Forma Build“ oder „Build Essentials“?
-2. **Computer-Diktat:** Name des Programms (Taskleiste unten rechts oder Startmenü). Windows oder Mac?
+2. **Computer-Diktat:** *Teilweise geklärt:* lokales Whisper-Programm auf dem PC, früher mit Claude gebaut, Name unbekannt. Für eine spätere Anbindung wird der Code bzw. der Ordner des Programms gebraucht.
 3. **iPad-Modell** (Einstellungen → Allgemein → Info). Nicht kritisch, nur für spätere KI auf dem Gerät.
 4. **Ein anonymisiertes Beispiel** deines heutigen Besprechungsprotokolls (PDF/Word): Danach richte ich PDF-Layout und Felder aus.
 5. ~~Deutschland oder Österreich?~~ **Geklärt: Österreich.** Einwendungsfrist 14 Tage (ÖNORM B 2110), Nummerierung nach Leistungsgruppe (z. B. 39.001).
-6. **Entscheidung:** Web-App auf Basis dieses Repos (empfohlen) oder doch nativ, wenn ein Mac beschafft wird.
+6. ~~Entscheidung Web-App oder nativ~~ **Entschieden:** eigenständige Web-App ohne Server (Abschnitt 0).
 7. **Azure:** Gibt es zu deinem Microsoft-365-Tenant schon ein Azure-Abo? Für die Live-Mitschrift wird eins gebraucht (Region EU).
+8. **Rolle:** Protokollierst du als **ÖBA** (für den Bauherrn) oder als **Bauleiter des Auftragnehmers**? Davon hängen Kennzeichen wie Mehrkostenforderung/Behinderung und der Protokollkopf ab.
+9. **Vertrag:** Ist die **ÖNORM B 2110** in deinen Bauverträgen vereinbart? Sonst trägt die 14-Tage-Klausel nicht automatisch.
+10. **iPad:** Privat oder **Firmengerät mit Verwaltung** (z. B. Intune)? Verwaltung kann Home-Bildschirm-Apps, Mikrofon oder Speicher einschränken.
 
 ## Quellen (Auswahl)
 
