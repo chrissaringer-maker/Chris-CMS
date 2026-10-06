@@ -49,38 +49,42 @@ process.on('uncaughtException', async (e) => {
 });
 
 await page.goto(BASE);
-await page.getByRole('button', { name: '+ Neues Projekt' }).click();
+await page.getByRole('button', { name: 'Neues Projekt', exact: true }).click();
 await fillModal({ Bauvorhaben: 'BV Musterstraße 12', 'Adresse (optional)': 'Musterstraße 12, 1010 Wien' }, 'Anlegen');
 await page.getByRole('link', { name: /Firmen/ }).click();
 
-for (const [firma, gewerk, name, mail] of [
-  ['Müller Bau GmbH', 'Rohbau', 'Max Müller', 'max@mueller.example'],
-  ['Elektro Huber', 'Elektro', 'Eva Huber', 'eva@huber.example'],
+for (const [firma, gewerk, lg, name, mail] of [
+  ['Müller Bau GmbH', 'Baumeister', '7', 'Max Müller', 'max@mueller.example'],
+  ['Trockenbau Huber', 'Trockenbau', '39', 'Eva Huber', 'eva@huber.example'],
 ]) {
-  await page.getByRole('button', { name: '+ Firma' }).click();
-  await fillModal({ Firma: firma, 'Gewerk (optional)': gewerk, 'Ansprechpartner (optional)': name, 'E-Mail (optional)': mail }, 'Hinzufügen');
+  await page.getByRole('button', { name: 'Firma', exact: true }).click();
+  await fillModal({ Firma: firma, 'Gewerk (optional)': gewerk, 'Leistungsgruppe(n) (optional)': lg, 'Ansprechpartner (optional)': name, 'E-Mail (optional)': mail }, 'Hinzufügen');
 }
+assert.equal(await page.getByLabel('Leistungsgruppe(n)').first().inputValue(), '07');
 await shot('01-firmen');
 await page.locator('#back').click();
-await page.getByRole('button', { name: '+ Baubesprechung' }).click();
+await page.getByRole('button', { name: 'Baubesprechung', exact: true }).click();
 await page.getByRole('button', { name: 'Alle Firmen hinzufügen' }).click();
 
-// Punkt 1: Aufgabe für Müller, Frist in der Vergangenheit (wird überfällig)
-await page.getByRole('button', { name: '+ Punkt' }).click();
+// Punkt 1: Aufgabe für den Trockenbauer, Frist in der Vergangenheit (wird überfällig)
+await page.getByRole('button', { name: 'Punkt', exact: true }).click();
 const card1 = page.locator('.item').nth(0);
+assert.equal(await card1.locator('.item-no').textContent(), '00.001');
 await card1.locator('textarea').fill('Brandschott Achse 3 herstellen, Material: Kompriband');
-await card1.locator('select').nth(2).selectOption({ label: 'Müller Bau GmbH' });
-await card1.locator('input[type=date]').fill(isoOffset(-3));
-// Punkt 2: Info, unklar
-await page.getByRole('button', { name: '+ Punkt' }).click();
+await card1.getByLabel('Zuständig').selectOption({ label: 'Trockenbau Huber' });
+assert.equal(await card1.locator('.item-no').textContent(), '39.001', 'Nummer folgt der LG der Firma');
+await card1.getByLabel('Frist').fill(isoOffset(-3));
+// Punkt 2: Info, unklar (allgemein, LG 00)
+await page.getByRole('button', { name: 'Punkt', exact: true }).click();
 const card2 = page.locator('.item').nth(1);
-await card2.locator('select').nth(0).selectOption('info');
+await card2.getByLabel('Art').selectOption('info');
 await card2.locator('textarea').fill('Baustrom wird ab nächster Woche umgestellt');
 await card2.getByLabel('unklar').check();
-assert.equal(await card2.locator('select').nth(1).inputValue(), 'info', 'Info-Punkt hat Status „zur Kenntnis“');
+assert.equal(await card2.getByLabel('Status').inputValue(), 'info', 'Info-Punkt hat Status „zur Kenntnis“');
+assert.equal(await card2.locator('.item-no').textContent(), '00.001', 'LG 00 ist wieder frei');
 
 // Skizze zu Punkt 1
-await card1.getByRole('button', { name: '✎ Skizze' }).click();
+await card1.getByRole('button', { name: 'Skizze', exact: true }).click();
 const canvas = page.locator('.sketch canvas');
 await canvas.waitFor();
 const box = await canvas.boundingBox();
@@ -93,7 +97,7 @@ await page.getByRole('button', { name: 'Fertig' }).click();
 await card1.locator('.thumb').first().waitFor();
 
 // Foto aus der Mediathek zu Punkt 1, danach einzeichnen
-const [chooser] = await Promise.all([page.waitForEvent('filechooser'), card1.getByRole('button', { name: '🖼 Mediathek' }).click()]);
+const [chooser] = await Promise.all([page.waitForEvent('filechooser'), card1.getByRole('button', { name: 'Mediathek', exact: true }).click()]);
 await chooser.setFiles(fixture);
 await page.locator('.item').nth(0).locator('.thumb').nth(1).waitFor();
 await page.locator('.item').nth(0).locator('.thumb').nth(1).click();
@@ -113,7 +117,7 @@ await shot('03-besprechung');
 const draftPdf = await download(() => page.getByRole('button', { name: 'Vorabzug-PDF' }).click());
 const draftText = pdfText(draftPdf);
 writeFileSync(join(OUT, 'vorabzug.txt'), draftText);
-for (const s of ['Baubesprechung Nr. 1', 'VORABZUG', '1.01', 'Brandschott Achse 3', 'Müller Bau GmbH', 'überfällig', '[unklar - bitte ergänzen]', 'Abb. 1.01-1', 'Abb. 1.01-2', 'Anlagen']) {
+for (const s of ['Baubesprechung Nr. 1', 'VORABZUG', '39.001', 'LG 39 · Trockenbau', 'LG 00 · Allgemein', 'Brandschott Achse 3', 'Trockenbau Huber', 'überfällig', '[unklar - bitte ergänzen]', 'Abb. 39.001-1', 'Abb. 39.001-2', 'Anlagen']) {
   assert.ok(draftText.includes(s), `Vorabzug enthält „${s}“`);
 }
 
@@ -126,28 +130,34 @@ const finalPdf = await download(() => page.getByRole('button', { name: /PDF teil
 const finalText = pdfText(finalPdf);
 writeFileSync(join(OUT, 'endfassung.txt'), finalText);
 assert.ok(finalText.includes('Fassung 1'));
-assert.ok(finalText.includes('Einwendungen gegen dieses Protokoll'));
+assert.ok(finalText.includes('Einwendungen gegen dieses Protokoll sind binnen 14 Tagen ab Übermittlung'));
 assert.ok(!finalText.includes('VORABZUG'));
 assert.equal(await page.locator('.item textarea:not([disabled])').count(), 0, 'Endfassung ist gesperrt');
 
 // Mail je Firma
-const mailHref = await page.getByRole('link', { name: /Müller Bau GmbH \(1, 1 überfällig\)/ }).getAttribute('href');
+const mailHref = await page.getByRole('link', { name: /Trockenbau Huber \(1, 1 überfällig\)/ }).getAttribute('href');
 const mailBody = decodeURIComponent(mailHref.split('body=')[1]);
-assert.ok(mailHref.startsWith('mailto:max%40mueller.example?subject='));
-assert.ok(mailBody.includes('ÜBERFÄLLIG') && mailBody.includes('1.01  Brandschott'));
-assert.equal(await page.getByRole('link', { name: /Elektro Huber/ }).count(), 0, 'Info-Punkte erzeugen keine Mail');
+assert.ok(mailHref.startsWith('mailto:eva%40huber.example?subject='));
+assert.ok(mailBody.includes('ÜBERFÄLLIG') && mailBody.includes('39.001  Brandschott'));
+assert.equal(await page.getByRole('link', { name: /Müller Bau/ }).count(), 0, 'Firmen ohne offene Punkte bekommen keine Mail');
 await shot('04-endfassung');
 
-// Zweite Besprechung: Punkt 1.01 wird fortgeschrieben, 1.02 (Info) nicht
+// Zweite Besprechung: Punkt 39.001 wird fortgeschrieben, 00.001 (Info) nicht
 await page.locator('#back').click();
-await page.getByRole('button', { name: '+ Baubesprechung' }).click();
+await page.getByRole('button', { name: 'Baubesprechung', exact: true }).click();
 await page.locator('.item').first().waitFor();
 assert.equal(await page.locator('.item').count(), 1);
-assert.equal(await page.locator('.item .item-no').first().textContent(), '1.01');
+assert.equal(await page.locator('.item .item-no').first().textContent(), '39.001');
+assert.equal(await page.locator('.item').first().getByLabel('Leistungsgruppe').count(), 0, 'fortgeschriebene Nummer ist fest');
 await page.locator('.item textarea').fill('Material geliefert, Einbau KW 43');
-await page.getByRole('button', { name: '+ Punkt' }).click();
-await page.locator('.item').nth(1).locator('textarea').fill('Neuer Punkt in Sitzung 2');
-assert.equal(await page.locator('.item .item-no').nth(1).textContent(), '2.01');
+await page.getByRole('button', { name: 'Punkt', exact: true }).click();
+const neu = page.locator('.item').nth(1);
+await neu.locator('textarea').fill('Neuer Punkt in Sitzung 2');
+assert.equal(await neu.locator('.item-no').textContent(), '00.002');
+await neu.getByLabel('Leistungsgruppe').selectOption('07');
+assert.equal(await neu.locator('.item-no').textContent(), '07.001', 'LG von Hand gewählt');
+await neu.getByLabel('Zuständig').selectOption({ label: 'Trockenbau Huber' });
+assert.equal(await neu.locator('.item-no').textContent(), '07.001', 'manuelle LG bleibt bei Firmenwahl');
 await page.waitForTimeout(900); // automatisches Speichern
 
 // Neu laden: Daten bleiben erhalten
@@ -155,6 +165,7 @@ await page.reload();
 await page.locator('.item').first().waitFor();
 assert.equal(await page.locator('.item textarea').first().inputValue(), 'Material geliefert, Einbau KW 43');
 assert.equal(await page.locator('.item textarea').nth(1).inputValue(), 'Neuer Punkt in Sitzung 2');
+assert.deepEqual(await page.locator('.item .item-no').allTextContents(), ['39.001', '07.001'], 'fortgeschrieben zuerst, dann neue in Erfassungsreihenfolge');
 const pdf2 = await download(() => page.getByRole('button', { name: 'Vorabzug-PDF' }).click());
 const text2 = pdfText(pdf2);
 writeFileSync(join(OUT, 'vorabzug-2.txt'), text2);

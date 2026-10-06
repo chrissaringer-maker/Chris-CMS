@@ -89,7 +89,7 @@ export function ask({ title, text = '', fields = [], ok = 'OK', cancel = 'Abbrec
       } else if (f.type === 'checkbox') {
         input = h('input', { type: 'checkbox', name: f.name, checked: !!f.value });
       } else {
-        input = h('input', { type: f.type ?? 'text', name: f.name, value: f.value ?? '', placeholder: f.placeholder ?? '', autocomplete: 'off' });
+        input = h('input', { type: f.type ?? 'text', name: f.name, value: f.value ?? '', placeholder: f.placeholder ?? '', autocomplete: 'off', inputmode: f.inputmode });
       }
       inputs[f.name] = input;
       return f.type === 'checkbox' ? h('label', { class: 'inline' }, input, f.label) : labeled(f.label, input);
@@ -212,4 +212,46 @@ export function pickFile({ accept = 'image/*', capture = false, multiple = false
     document.body.append(input);
     input.click();
   });
+}
+
+// Liniensymbole (24er-Raster, eckige Enden) für einen sachlich-technischen Auftritt.
+const ICONS = {
+  plus: ['M12 4v16', 'M4 12h16'],
+  camera: ['M3 8h4l2-3h6l2 3h4v12H3z', 'M12 10a3.5 3.5 0 1 0 0 7a3.5 3.5 0 1 0 0-7z'],
+  image: ['M3 5h18v14H3z', 'M3 16l5-5 4 4 3-3 6 6', 'M8.5 8a1.5 1.5 0 1 0 0 3a1.5 1.5 0 1 0 0-3z'],
+  pen: ['M4 20l1-4L16 5l3 3L8 19z', 'M14 7l3 3'],
+  marker: ['M8 15l7-7 4 4-7 7H8z', 'M4 21h9'],
+  eraser: ['M9 20h11', 'M4 15l9-9 6 6-8 8H8z', 'M9 10l6 6'],
+  undo: ['M9 14L4 9l5-5', 'M4 9h10a6 6 0 0 1 0 12h-3'],
+  redo: ['M15 14l5-5-5-5', 'M20 9H10a6 6 0 0 0 0 12h3'],
+  mail: ['M3 5h18v14H3z', 'M3 7l9 6 9-6'],
+  copy: ['M8 8h12v12H8z', 'M4 16V4h12'],
+  file: ['M6 3h9l4 4v14H6z', 'M15 3v4h4', 'M9 12h6', 'M9 16h6'],
+  share: ['M12 3v12', 'M7 8l5-5 5 5', 'M5 12v9h14v-9'],
+  lock: ['M5 11h14v10H5z', 'M8 11V7a4 4 0 0 1 8 0v4'],
+  unlock: ['M5 11h14v10H5z', 'M8 11V7a4 4 0 0 1 7.5-2'],
+  trash: ['M4 7h16', 'M9 7V4h6v3', 'M6 7l1 14h10l1-14'],
+  close: ['M6 6l12 12', 'M18 6L6 18'],
+  download: ['M12 3v12', 'M7 10l5 5 5-5', 'M5 21h14'],
+  upload: ['M12 15V3', 'M7 8l5-5 5 5', 'M5 21h14'],
+  grid: ['M3 3h18v18H3z', 'M9 3v18', 'M15 3v18', 'M3 9h18', 'M3 15h18'],
+  hand: ['M8 12V5a1.5 1.5 0 0 1 3 0v6', 'M11 11V4a1.5 1.5 0 0 1 3 0v7', 'M14 11V6a1.5 1.5 0 0 1 3 0v8a7 7 0 0 1-7 7h-1a6 6 0 0 1-5-3l-2-4a1.5 1.5 0 0 1 2.5-1.5L8 15'],
+  users: ['M9 11a4 4 0 1 0 0-8a4 4 0 1 0 0 8z', 'M2 21v-2a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v2', 'M16 3.5a4 4 0 0 1 0 7', 'M22 21v-2a5 5 0 0 0-3.5-4.8'],
+  settings: ['M4 6h10', 'M18 6h2', 'M14 4v4', 'M4 12h4', 'M12 12h8', 'M8 10v4', 'M4 18h12', 'M20 18h0', 'M16 16v4'],
+  building: ['M4 21V5l8-3v19', 'M12 21V9l8 3v9', 'M2 21h20', 'M7 8h2', 'M7 12h2', 'M7 16h2', 'M15 14h2', 'M15 18h2'],
+};
+
+export function icon(name, size = 20) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  for (const [k, v] of Object.entries({ viewBox: '0 0 24 24', width: size, height: size, fill: 'none', stroke: 'currentColor',
+    'stroke-width': 2, 'stroke-linecap': 'square', 'stroke-linejoin': 'miter', 'aria-hidden': 'true', class: 'icon' })) {
+    svg.setAttribute(k, v);
+  }
+  for (const d of ICONS[name] ?? []) {
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', d);
+    svg.append(path);
+  }
+  return svg;
 }

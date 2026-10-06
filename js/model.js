@@ -2,9 +2,14 @@
 // Alle Funktionen sind rein: Sie verändern ihre Eingaben nicht, sondern liefern Kopien.
 
 export const MEETING_TYPES = {
-  besprechung: { label: 'Baubesprechung', prefix: '' },
-  begehung: { label: 'Baubegehung', prefix: 'B' },
+  besprechung: { label: 'Baubesprechung' },
+  begehung: { label: 'Baubegehung' },
 };
+
+// Punkte werden je Projekt nach Leistungsgruppe (LB-HB) nummeriert: 39.001 … 39.999.
+// LG 00 = allgemeine Punkte ohne bestimmtes Gewerk.
+export const LG_GENERAL = '00';
+export const MAX_SEQ = 999;
 
 export const ITEM_TYPES = {
   aufgabe: 'Aufgabe',
@@ -20,9 +25,12 @@ export const STATUS = {
   info: 'zur Kenntnis',
 };
 
+// Österreich: ÖNORM B 2110 – einseitige Aufzeichnungen gelten als bestätigt, wenn nicht binnen 14 Tagen ab Übergabe
+// schriftlich widersprochen wird (nur wirksam, wenn die Norm im Bauvertrag vereinbart ist).
+export const DEFAULT_OBJECTION_DAYS = 14;
 export const DEFAULT_OBJECTION_TEXT =
-  'Einwendungen gegen dieses Protokoll sind binnen {tage} Werktagen nach Erhalt schriftlich an den Verfasser zu richten. ' +
-  'Andernfalls gilt das Protokoll als genehmigt.';
+  'Einwendungen gegen dieses Protokoll sind binnen {tage} Tagen ab Übermittlung schriftlich beim Verfasser zu erheben. ' +
+  'Andernfalls gilt das Protokoll als bestätigt.';
 
 export function uid() {
   return crypto.randomUUID();
@@ -48,7 +56,7 @@ export function newProject(name, now = new Date()) {
     address: '',
     client: '',
     author: '',
-    objectionDays: 5,
+    objectionDays: DEFAULT_OBJECTION_DAYS,
     objectionText: DEFAULT_OBJECTION_TEXT,
     companies: [],
     createdAt: now.toISOString(),
@@ -56,8 +64,35 @@ export function newProject(name, now = new Date()) {
   };
 }
 
-export function newCompany(name, trade = '') {
-  return { id: uid(), name: name.trim(), trade: trade.trim(), contacts: [] };
+export function newCompany(name, trade = '', lgs = []) {
+  return { id: uid(), name: name.trim(), trade: trade.trim(), lgs, contacts: [] };
+}
+
+// „7“ → „07“; ungültige Eingaben → null
+export function normalizeLg(input) {
+  const t = String(input ?? '').trim();
+  return /^\d{1,2}$/.test(t) ? t.padStart(2, '0') : null;
+}
+
+// „39“, „07, 08“ oder „7 8“ → ['39'] bzw. ['07', '08']
+export function parseLgList(input) {
+  return [...new Set(String(input ?? '').split(/[\s,;]+/).map(normalizeLg).filter(Boolean))];
+}
+
+// Alle im Projekt bekannten Leistungsgruppen mit Bezeichnung (aus Gewerk bzw. Firmenname).
+export function projectLgs(project) {
+  const map = new Map([[LG_GENERAL, 'Allgemein']]);
+  for (const c of project.companies) {
+    for (const lg of c.lgs ?? []) {
+      const label = c.trade || c.name;
+      map.set(lg, map.has(lg) && lg !== LG_GENERAL ? `${map.get(lg)} / ${label}` : label);
+    }
+  }
+  return [...map.entries()].sort(([a], [b]) => Number(a) - Number(b)).map(([lg, label]) => ({ lg, label }));
+}
+
+export function lgLabel(project, lg) {
+  return projectLgs(project).find((x) => x.lg === lg)?.label ?? '';
 }
 
 export function newContact(name = '', email = '') {
@@ -153,29 +188,42 @@ export function reopenMeeting(meeting, now = new Date()) {
 // ---------- Punkte ----------
 
 export function parseNo(no) {
-  const m = /^([A-Z]*)(\d+)\.(\d+)$/.exec(no);
-  return m ? { prefix: m[1], meeting: Number(m[2]), seq: Number(m[3]) } : { prefix: '', meeting: 0, seq: 0 };
+  const m = /^(\d+)\.(\d+)$/.exec(no ?? '');
+  return m ? { group: Number(m[1]), seq: Number(m[2]) } : { group: 0, seq: 0 };
 }
 
 export function compareNo(a, b) {
   const x = parseNo(a);
   const y = parseNo(b);
-  return x.prefix.localeCompare(y.prefix) || x.meeting - y.meeting || x.seq - y.seq;
+  return x.group - y.group || x.seq - y.seq;
+}
+
+export function formatNo(lg, seq) {
+  return `${lg}.${String(seq).padStart(3, '0')}`;
+}
+
+// Nächste freie Nummer einer Leistungsgruppe im Projekt (ohne den Punkt selbst).
+export function nextNo(items, projectId, lg, exceptId = null) {
+  const seq = items
+    .filter((i) => i.projectId === projectId && i.lg === lg && i.id !== exceptId)
+    .reduce((max, i) => Math.max(max, parseNo(i.no).seq), 0) + 1;
+  if (seq > MAX_SEQ) throw new Error(`Leistungsgruppe ${lg} ist voll (${MAX_SEQ} Punkte).`);
+  return formatNo(lg, seq);
 }
 
 export function defaultStatus(type) {
   return type === 'aufgabe' || type === 'mangel' ? 'offen' : 'info';
 }
 
-export function addItem({ meeting, items, type = 'aufgabe', companyId = '', now = new Date() }) {
-  const seq = items
-    .filter((i) => i.createdMeetingId === meeting.id)
-    .reduce((max, i) => Math.max(max, parseNo(i.no).seq), 0) + 1;
+// items: alle Punkte des Projekts (Nummern sind projektweit eindeutig)
+export function addItem({ meeting, items, lg = LG_GENERAL, type = 'aufgabe', companyId = '', now = new Date() }) {
   return {
     id: uid(),
     projectId: meeting.projectId,
     series: meeting.type,
-    no: `${MEETING_TYPES[meeting.type].prefix}${meeting.number}.${String(seq).padStart(2, '0')}`,
+    lg,
+    lgManual: false,
+    no: nextNo(items, meeting.projectId, lg),
     type,
     text: '',
     createdMeetingId: meeting.id,
@@ -197,9 +245,24 @@ export function canEditBase(item, meeting) {
   return item.createdMeetingId === meeting.id && !isLocked(meeting);
 }
 
-// Löschen nur, solange der Punkt nirgends fortgeschrieben wurde. Sonst „entfällt“ setzen.
+// Löschen und Umnummerieren nur, solange der Punkt nirgends fortgeschrieben wurde. Sonst „entfällt“ setzen.
 export function canDelete(item, meeting) {
   return canEditBase(item, meeting) && item.log.every((e) => e.meetingId === meeting.id);
+}
+export const canRenumber = canDelete;
+
+// Neue Leistungsgruppe → neue Nummer. manual = vom Benutzer gewählt (dann keine automatische Übernahme mehr).
+export function changeLg(item, items, meeting, lg, manual = true) {
+  if (!canRenumber(item, meeting)) throw new Error('Nummer ist bereits fortgeschrieben und bleibt unverändert.');
+  if (lg === item.lg) return { ...item, lgManual: item.lgManual || manual };
+  return { ...item, lg, lgManual: item.lgManual || manual, no: nextNo(items, item.projectId, lg, item.id) };
+}
+
+// Bei Wahl der zuständigen Firma: LG der Firma übernehmen, solange der Benutzer keine LG festgelegt hat.
+export function lgFromCompany(item, items, meeting, company) {
+  const lg = company?.lgs?.[0];
+  if (!lg || item.lgManual || lg === item.lg || !canRenumber(item, meeting)) return item;
+  return changeLg(item, items, meeting, lg, false);
 }
 
 export function itemsForMeeting(items, meetingId) {
@@ -236,6 +299,8 @@ export function buildProtocol({ project, meeting, meetings, items, attachments =
     return {
       id: item.id,
       no: item.no,
+      lg: item.lg ?? LG_GENERAL,
+      lgLabel: lgLabel(project, item.lg ?? LG_GENERAL),
       type: ITEM_TYPES[item.type],
       text: item.text.trim(),
       history,

@@ -1,9 +1,10 @@
 // Ansicht einer Besprechung/Begehung: Kopf, Teilnehmer, Punkte (Diktat), Fotos/Skizzen, Abschluss und Versand.
-import { h, mount, add, labeled, setTitle, toast, ask, confirmAsk, choose, shareFile, copyText, blobUrl, markSaved, pickFile, viewImage } from './ui.js';
+import { h, icon, mount, add, labeled, setTitle, toast, ask, confirmAsk, choose, shareFile, copyText, blobUrl, markSaved, pickFile, viewImage } from './ui.js';
 import * as store from './store.js';
 import {
   uid, meetingTitle, formatDate, isLocked, versionLabel, finalizeMeeting, reopenMeeting, addItem, itemsForMeeting,
-  canEditBase, canDelete, defaultStatus, isOverdue, buildProtocol, companyDigests, mailtoUrl, distribution, fileSafe,
+  canEditBase, canDelete, canRenumber, changeLg, lgFromCompany, normalizeLg, projectLgs, lgLabel, LG_GENERAL,
+  defaultStatus, isOverdue, buildProtocol, companyDigests, mailtoUrl, distribution, fileSafe,
   ITEM_TYPES, STATUS, isoDate,
 } from './model.js';
 import { importPhoto, blobToDataUrl } from './images.js';
@@ -109,14 +110,14 @@ export async function renderMeeting(app, id) {
       h('div', { class: 'grow' },
         h('strong', {}, bundle.project.companies.find((c) => c.id === p.companyId)?.name ?? '–'),
         h('div', { class: 'sub' }, p.name || 'ohne Namen')),
-      locked ? null : h('button', { class: 'ghost', 'aria-label': 'Entfernen', onclick: async () => {
+      locked ? null : h('button', { class: 'ghost', 'aria-label': 'Teilnehmer entfernen', onclick: async () => {
         meeting.participants.splice(idx, 1);
         await store.saveMeeting(meeting);
         rerender();
-      } }, '✕'))),
+      } }, icon('close')))),
     locked ? null : h('div', { class: 'actions' },
-      h('button', { onclick: addParticipant }, '+ Teilnehmer'),
-      h('button', { onclick: addAllCompanies }, 'Alle Firmen hinzufügen')));
+      h('button', { onclick: addParticipant }, icon('plus'), 'Teilnehmer'),
+      h('button', { onclick: addAllCompanies }, icon('users'), 'Alle Firmen hinzufügen')));
 
   const general = h('div', { class: 'card' },
     h('h3', {}, 'Allgemeines'),
@@ -196,13 +197,13 @@ export async function renderMeeting(app, id) {
     if (!att) return null;
     return h('button', { type: 'button', class: 'thumb', onclick: () => attachmentMenu(att, target) },
       h('img', { src: blobUrl(att.thumb ?? att.rendered ?? att.original), alt: att.caption || att.kind }),
-      h('span', { class: 'tag' }, att.kind === 'sketch' ? 'Skizze' : att.strokes?.length ? 'Foto ✎' : 'Foto'));
+      h('span', { class: 'tag' }, att.kind === 'sketch' ? 'Skizze' : att.strokes?.length ? 'Foto · markiert' : 'Foto'));
   }));
 
   const mediaButtons = (target) => locked ? null : h('div', { class: 'actions' },
-    h('button', { onclick: () => addPhotos(target, true) }, '📷 Foto'),
-    h('button', { onclick: () => addPhotos(target, false) }, '🖼 Mediathek'),
-    h('button', { onclick: () => addSketch(target) }, '✎ Skizze'));
+    h('button', { onclick: () => addPhotos(target, true) }, icon('camera'), 'Foto'),
+    h('button', { onclick: () => addPhotos(target, false) }, icon('image'), 'Mediathek'),
+    h('button', { onclick: () => addSketch(target) }, icon('pen'), 'Skizze'));
 
   // ---------- Punkte ----------
   function itemCard(item, entry) {
@@ -234,8 +235,51 @@ export async function renderMeeting(app, id) {
         saveItemSoon(item);
       })
       : h('span', { class: 'chip' }, ITEM_TYPES[item.type]);
-    if (typeEl.tagName === 'SELECT') typeEl.style.width = 'auto';
+    if (typeEl.tagName === 'SELECT') {
+      typeEl.style.width = 'auto';
+      typeEl.setAttribute('aria-label', 'Art');
+    }
     statusSel.style.width = 'auto';
+    statusSel.setAttribute('aria-label', 'Status');
+
+    // Leistungsgruppe bestimmt die Nummer (39.001 …); änderbar, solange der Punkt nicht fortgeschrieben ist
+    const noEl = h('span', { class: 'item-no' }, item.no);
+    const allItems = () => [...itemsById.values()];
+    let lgSel = null;
+    const applyLg = (fn) => {
+      try {
+        Object.assign(item, fn());
+      } catch (e) {
+        toast(e.message, 5000);
+      }
+      noEl.textContent = item.no;
+      if (lgSel) lgSel.value = item.lg;
+      saveItemSoon(item);
+    };
+    let lgEl;
+    if (canRenumber(item, meeting)) {
+      const opts = projectLgs(project).map(({ lg, label }) => [lg, `LG ${lg} · ${label}`]);
+      if (!opts.some(([lg]) => lg === item.lg)) opts.push([item.lg, `LG ${item.lg}`]);
+      lgSel = select([...opts, ['__other', 'Andere LG …']], item.lg ?? LG_GENERAL, async (v) => {
+        let lg = v;
+        if (v === '__other') {
+          const r = await ask({ title: 'Leistungsgruppe', fields: [{ name: 'lg', label: 'Nummer der Leistungsgruppe (z. B. 39)', inputmode: 'numeric' }], ok: 'Übernehmen' });
+          lg = normalizeLg(r?.lg);
+          if (!lg) {
+            lgSel.value = item.lg;
+            if (r) toast('Bitte eine ein- oder zweistellige Zahl eingeben.');
+            return;
+          }
+          if (![...lgSel.options].some((o) => o.value === lg)) lgSel.insertBefore(h('option', { value: lg }, `LG ${lg}`), lgSel.lastChild);
+        }
+        applyLg(() => changeLg(item, allItems(), meeting, lg, true));
+      });
+      lgSel.style.width = 'auto';
+      lgSel.setAttribute('aria-label', 'Leistungsgruppe');
+      lgEl = lgSel;
+    } else {
+      lgEl = h('span', { class: 'muted small' }, lgLabel(project, item.lg ?? LG_GENERAL));
+    }
 
     const textBlock = [];
     if (isOwn) {
@@ -255,13 +299,17 @@ export async function renderMeeting(app, id) {
 
     add(card, 
       h('div', { class: 'item-head' },
-        h('span', { class: 'item-no' }, item.no), typeEl, statusSel, chips,
+        noEl, lgEl, typeEl, statusSel, chips,
         h('label', { class: 'inline', style: 'margin:0 0 0 auto' },
           h('input', { type: 'checkbox', checked: entry.unclear, disabled: locked, onchange: (e) => { entry.unclear = e.target.checked; refreshChips(); saveItemSoon(item); } }),
           'unklar')),
       textBlock,
       h('div', { class: 'grid' },
-        h('div', {}, labeled('Zuständig', select(companyOptions, entry.companyId, (v) => { entry.companyId = v; saveItemSoon(item); }, locked))),
+        h('div', {}, labeled('Zuständig', select(companyOptions, entry.companyId, (v) => {
+          entry.companyId = v;
+          if (lgSel) applyLg(() => lgFromCompany(item, allItems(), meeting, project.companies.find((c) => c.id === v)));
+          else saveItemSoon(item);
+        }, locked))),
         h('div', {}, labeled('Frist', h('input', { type: 'date', value: entry.due, disabled: locked,
           onchange: (e) => { entry.due = e.target.value; refreshChips(); saveItemSoon(item); } })))),
       thumbs(target),
@@ -272,12 +320,18 @@ export async function renderMeeting(app, id) {
           pending.delete(item.id);
           await store.deleteItem(item);
           rerender();
-        } }, 'Punkt löschen') : null));
+        } }, icon('trash'), 'Punkt löschen') : null));
     refreshChips();
     return card;
   }
 
-  const rows = itemsForMeeting(bundle.items, meeting.id);
+  // Ansicht: fortgeschriebene Punkte nach Nummer, neue Punkte in Erfassungsreihenfolge (springen beim Umnummerieren nicht).
+  // Das PDF ordnet nach Leistungsgruppe und Nummer.
+  const sorted = itemsForMeeting(bundle.items, meeting.id);
+  const rows = [
+    ...sorted.filter((r) => r.item.createdMeetingId !== meeting.id),
+    ...sorted.filter((r) => r.item.createdMeetingId === meeting.id).sort((a, b) => a.item.createdAt.localeCompare(b.item.createdAt)),
+  ];
   const emptyHint = h('p', { class: 'muted' }, 'Noch keine Punkte. Unten rechts „+ Punkt“ tippen, dann in das Feld diktieren.');
   const itemList = h('div', {}, rows.length ? rows.map(({ item, entry }) => itemCard(item, entry)) : emptyHint);
   const carried = rows.filter((r) => r.item.createdMeetingId !== meeting.id).length;
@@ -293,7 +347,7 @@ export async function renderMeeting(app, id) {
     card.querySelector('textarea')?.focus();
     card.scrollIntoView({ block: 'center', behavior: 'smooth' });
     store.saveItem(item).then(markSaved, (e) => toast(`Speichern fehlgeschlagen: ${e.message}`, 6000));
-  } }, '+ Punkt');
+  } }, icon('plus', 24), 'Punkt');
 
   // ---------- Abschluss & Versand ----------
   async function makePdf(draft) {
@@ -362,21 +416,21 @@ export async function renderMeeting(app, id) {
       h('li', {}, '„Verteiler kopieren“, dann „PDF teilen“ → Outlook → Adressen ins Feld „An“ einfügen.'),
       h('li', {}, 'Danach optional die kurzen Mails „Ihre offenen Punkte“ je Firma.')),
     h('div', { class: 'actions' },
-      locked ? null : h('button', { onclick: busy(() => makePdf(true)) }, 'Vorabzug-PDF'),
-      locked ? null : h('button', { class: 'primary', onclick: busy(finalize) }, 'Endfassung abschließen'),
-      locked ? h('button', { class: 'primary', onclick: busy(() => makePdf(false)) }, `PDF teilen (${versionLabel(meeting)})`) : null,
-      locked ? h('button', { onclick: busy(reopen) }, 'Neue Fassung anlegen') : null,
+      locked ? null : h('button', { onclick: busy(() => makePdf(true)) }, icon('file'), 'Vorabzug-PDF'),
+      locked ? null : h('button', { class: 'primary', onclick: busy(finalize) }, icon('lock'), 'Endfassung abschließen'),
+      locked ? h('button', { class: 'primary', onclick: busy(() => makePdf(false)) }, icon('share'), `PDF teilen (${versionLabel(meeting)})`) : null,
+      locked ? h('button', { onclick: busy(reopen) }, icon('unlock'), 'Neue Fassung anlegen') : null,
       h('button', { disabled: !dist.length, onclick: async () => {
         const ok = await copyText(dist.map((d) => d.email).join('; '));
         toast(ok ? `${dist.length} Adresse(n) kopiert.` : 'Kopieren nicht möglich.');
-      } }, `Verteiler kopieren (${dist.length})`)),
+      } }, icon('copy'), `Verteiler kopieren (${dist.length})`)),
     digests.length
       ? [h('h3', {}, 'Ihre offenen Punkte – je Firma'),
         h('div', { class: 'actions' }, digests.map((d) => h('a', {
           class: 'btn',
           href: d.recipients.length ? mailtoUrl(d.recipients, d.subject, d.body) : null,
           onclick: d.recipients.length ? null : (e) => { e.preventDefault(); toast(`Für ${d.company} ist keine E-Mail hinterlegt.`); },
-        }, `✉ ${d.company} (${d.count}${d.overdue ? `, ${d.overdue} überfällig` : ''})`)))]
+        }, icon('mail'), `${d.company} (${d.count}${d.overdue ? `, ${d.overdue} überfällig` : ''})`)))]
       : null,
     store.canDeleteMeeting(bundle, meeting)
       ? h('div', { class: 'actions', style: 'margin-top:20px' }, h('button', { class: 'danger', onclick: async () => {
@@ -384,7 +438,7 @@ export async function renderMeeting(app, id) {
         pending.clear();
         await store.deleteMeeting(bundle, meeting);
         location.hash = `#/p/${project.id}`;
-      } }, 'Sitzung löschen'))
+      } }, icon('trash'), 'Sitzung löschen'))
       : null);
 
   mount(app, 

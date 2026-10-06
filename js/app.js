@@ -1,10 +1,10 @@
 // Einstieg: Router und die Ansichten Start, Projekt, Firmen, Projektdaten, Sicherung.
-import { h, mount, add, labeled, setTitle, toast, ask, confirmAsk, shareFile, pickFile, releaseBlobUrls, markSaved } from './ui.js';
+import { h, icon, mount, add, labeled, setTitle, toast, ask, confirmAsk, shareFile, pickFile, releaseBlobUrls, markSaved } from './ui.js';
 import * as store from './store.js';
 import { exportAll, importAll, backupAgeDays } from './backup.js';
 import {
-  newProject, newCompany, newContact, seriesOf, meetingTitle, formatDate, openItems, companyName,
-  isOverdue, isoDate, MEETING_TYPES, DEFAULT_OBJECTION_TEXT, versionLabel,
+  newProject, newCompany, newContact, parseLgList, seriesOf, meetingTitle, formatDate, openItems, companyName,
+  isOverdue, isoDate, MEETING_TYPES, DEFAULT_OBJECTION_TEXT, DEFAULT_OBJECTION_DAYS, versionLabel,
 } from './model.js';
 import { renderMeeting, flushPending } from './meeting.js';
 
@@ -67,13 +67,13 @@ async function renderHome() {
   mount(app, 
     ...banners,
     h('div', { class: 'actions' },
-      h('button', { class: 'primary', onclick: createProject }, '+ Neues Projekt'),
-      h('a', { class: 'btn', href: '#/sicherung' }, 'Sicherung')),
+      h('button', { class: 'primary', onclick: createProject }, icon('plus'), 'Neues Projekt'),
+      h('a', { class: 'btn', href: '#/sicherung' }, icon('download'), 'Sicherung')),
     projects.length
       ? h('ul', { class: 'list' }, projects.map((p) => h('li', {},
         h('a', { class: 'row', href: `#/p/${p.id}` },
           h('div', { class: 'grow' }, h('strong', {}, p.name), h('div', { class: 'sub' }, p.address || 'ohne Adresse')),
-          h('span', { class: 'sub' }, '›')))))
+          h('span', { class: 'sub mono' }, '›')))))
       : h('p', { class: 'muted pad' }, 'Noch keine Projekte. Lege zuerst ein Projekt (Bauvorhaben) an, dann die Firmen und deine erste Besprechung.'),
   );
 }
@@ -132,10 +132,10 @@ async function renderProject(id) {
 
   mount(app, 
     h('div', { class: 'actions' },
-      h('button', { class: 'primary', onclick: () => start('besprechung') }, '+ Baubesprechung'),
-      h('button', { class: 'primary', onclick: () => start('begehung') }, '+ Baubegehung'),
-      h('a', { class: 'btn', href: `#/p/${id}/firmen` }, `Firmen (${project.companies.length})`),
-      h('a', { class: 'btn', href: `#/p/${id}/daten` }, 'Projektdaten')),
+      h('button', { class: 'primary', onclick: () => start('besprechung') }, icon('plus'), 'Baubesprechung'),
+      h('button', { class: 'primary', onclick: () => start('begehung') }, icon('plus'), 'Baubegehung'),
+      h('a', { class: 'btn', href: `#/p/${id}/firmen` }, icon('building'), `Firmen (${project.companies.length})`),
+      h('a', { class: 'btn', href: `#/p/${id}/daten` }, icon('settings'), 'Projektdaten')),
     h('h2', {}, MEETING_TYPES.besprechung.label + 'en'),
     meetingList('besprechung'),
     h('h2', {}, MEETING_TYPES.begehung.label + 'en'),
@@ -168,14 +168,15 @@ async function renderCompanies(id) {
       title: 'Firma hinzufügen',
       fields: [
         { name: 'name', label: 'Firma', placeholder: 'z. B. Müller Bau GmbH' },
-        { name: 'trade', label: 'Gewerk (optional)', placeholder: 'z. B. Rohbau' },
+        { name: 'trade', label: 'Gewerk (optional)', placeholder: 'z. B. Trockenbau' },
+        { name: 'lgs', label: 'Leistungsgruppe(n) (optional)', placeholder: 'z. B. 39 oder 07, 08', inputmode: 'numeric' },
         { name: 'contact', label: 'Ansprechpartner (optional)' },
         { name: 'email', label: 'E-Mail (optional)', type: 'email' },
       ],
       ok: 'Hinzufügen',
     });
     if (!r?.name) return;
-    const c = newCompany(r.name, r.trade);
+    const c = newCompany(r.name, r.trade, parseLgList(r.lgs));
     if (r.contact || r.email) c.contacts.push(newContact(r.contact, r.email));
     project.companies.push(c);
     await save();
@@ -195,28 +196,30 @@ async function renderCompanies(id) {
         c.contacts = c.contacts.filter((x) => x !== k);
         await save();
         rerender();
-      } }, 'Löschen')));
+      } }, icon('trash'), 'Löschen')));
 
   mount(app, 
-    h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: addCompany }, '+ Firma')),
-    project.companies.length ? null : h('p', { class: 'muted' }, 'Noch keine Firmen. Die Kontakte mit E-Mail bilden den Verteiler des Protokolls.'),
+    h('div', { class: 'actions' }, h('button', { class: 'primary', onclick: addCompany }, icon('plus'), 'Firma')),
+    h('p', { class: 'muted small' }, 'Die Kontakte mit E-Mail bilden den Verteiler. Die Leistungsgruppe (LB-HB) bestimmt die Nummer der Punkte: Wählst du bei einem Punkt die Firma, bekommt er die Nummer ihrer LG (z. B. 39.001). Allgemeine Punkte laufen unter LG 00.'),
     project.companies.map((c) => h('div', { class: 'card' },
       h('div', { class: 'grid' },
         h('div', {}, labeled('Firma', h('input', { value: c.name, onchange: (e) => { c.name = e.target.value.trim(); save(); } }))),
-        h('div', {}, labeled('Gewerk', h('input', { value: c.trade, onchange: (e) => { c.trade = e.target.value.trim(); save(); } })))),
+        h('div', {}, labeled('Gewerk', h('input', { value: c.trade, onchange: (e) => { c.trade = e.target.value.trim(); save(); } }))),
+        h('div', {}, labeled('Leistungsgruppe(n)', h('input', { value: (c.lgs ?? []).join(', '), inputmode: 'numeric', placeholder: 'z. B. 39',
+          onchange: (e) => { c.lgs = parseLgList(e.target.value); e.target.value = c.lgs.join(', '); save(); } })))),
       c.contacts.map((k) => contactRow(c, k)),
       h('div', { class: 'actions' },
         h('button', { onclick: async () => {
           c.contacts.push(newContact());
           await save();
           rerender();
-        } }, '+ Kontakt'),
+        } }, icon('plus'), 'Kontakt'),
         h('button', { class: 'danger', onclick: async () => {
           if (!(await confirmAsk('Firma löschen?', `${c.name} – bestehende Punkte behalten die Zuordnung nicht mehr.`, 'Löschen', true))) return;
           project.companies = project.companies.filter((x) => x !== c);
           await save();
           rerender();
-        } }, 'Firma löschen')))),
+        } }, icon('trash'), 'Firma löschen')))),
   );
 }
 
@@ -232,7 +235,7 @@ async function renderProjectSettings(id) {
       type: attrs.type,
       min: attrs.min,
       onchange: async (e) => {
-        project[key] = attrs.type === 'number' ? Math.max(1, Number(e.target.value) || 5) : e.target.value.trim();
+        project[key] = attrs.type === 'number' ? Math.max(1, Number(e.target.value) || DEFAULT_OBJECTION_DAYS) : e.target.value.trim();
         await store.saveProject(project);
         markSaved();
       },
@@ -245,8 +248,9 @@ async function renderProjectSettings(id) {
       field('client', 'Bauherr'),
       field('author', 'Verfasser (erscheint im Protokoll und unter den Mails)')),
     h('div', { class: 'card' },
-      field('objectionDays', 'Einwendungsfrist in Werktagen', { type: 'number', min: 1 }),
+      field('objectionDays', 'Einwendungsfrist in Tagen', { type: 'number', min: 1 }),
       field('objectionText', 'Text der Einwendungsklausel ({tage} wird ersetzt)', { textarea: true }),
+      h('p', { class: 'muted small' }, 'Österreich: Nach ÖNORM B 2110 gelten einseitige Aufzeichnungen als bestätigt, wenn der Vertragspartner nicht binnen 14 Tagen ab Übergabe schriftlich widerspricht – aber nur, wenn die ÖNORM im Bauvertrag vereinbart ist. Ohne diese Vereinbarung ist die Wirkung des Schweigens nach OGH-Rechtsprechung unsicher.'),
       h('div', { class: 'actions' }, h('button', { onclick: async () => {
         project.objectionText = DEFAULT_OBJECTION_TEXT;
         await store.saveProject(project);
@@ -265,7 +269,7 @@ async function renderProjectSettings(id) {
         if (r?.name !== project.name) return r && toast('Name stimmt nicht überein.');
         await store.deleteProject(id);
         location.hash = '#/';
-      } }, 'Projekt löschen')),
+      } }, icon('trash'), 'Projekt löschen')),
   );
 }
 
@@ -292,7 +296,7 @@ async function renderBackup() {
         } finally {
           e.target.disabled = false;
         }
-      } }, 'Sicherung erstellen')),
+      } }, icon('download'), 'Sicherung erstellen')),
     h('div', { class: 'card' },
       h('h3', {}, 'Wiederherstellen'),
       h('p', {}, 'Ersetzt ALLE Daten auf diesem Gerät durch den Stand der Sicherungsdatei.'),
@@ -307,7 +311,7 @@ async function renderBackup() {
         } catch (err) {
           toast(err.message, 5000);
         }
-      } }, 'Sicherung einspielen')),
+      } }, icon('upload'), 'Sicherung einspielen')),
     h('div', { class: 'card' },
       h('h3', {}, 'Speicher'),
       h('p', { class: 'small' }, est ? `Belegt: ${mb(est.usage)} von ca. ${mb(est.quota)}` : 'Keine Angabe möglich.'),

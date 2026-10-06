@@ -41,6 +41,7 @@ const INK = [29, 35, 43];
 const MUTED = [93, 102, 115];
 const WARN = [181, 71, 11];
 const PURPLE = [122, 42, 118];
+const BRAND = [28, 52, 84];
 
 /**
  * @param {object} p   Protokoll aus buildProtocol
@@ -161,7 +162,23 @@ export async function buildPdf(p, { draft, images = new Map() }) {
   for (const section of p.sections) {
     heading(section.title);
     tableHeader();
-    for (const r of section.rows) drawRow(r);
+    let lastLg = null;
+    for (const r of section.rows) {
+      if (r.lg && r.lg !== lastLg) lgHeading(r);
+      lastLg = r.lg;
+      drawRow(r);
+    }
+  }
+
+  // Zwischenüberschrift je Leistungsgruppe
+  function lgHeading(r) {
+    if (y + lh(9.5) + lh(10) * 2 > PAGE.h - PAGE.b) {
+      newPage();
+      tableHeader();
+    }
+    font(9.5, 'bold', BRAND);
+    doc.text(clean(`LG ${r.lg}${r.lgLabel ? ` · ${r.lgLabel}` : ''}`), PAGE.l, y, { baseline: 'top' });
+    y += lh(9.5) + 1;
   }
 
   function drawRow(r) {

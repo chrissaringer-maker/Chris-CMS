@@ -3,40 +3,89 @@ import assert from 'node:assert/strict';
 import {
   newProject, newCompany, newContact, createMeeting, addItem, updateEntry, entryFor, itemsForMeeting,
   buildProtocol, companyDigests, mailtoUrl, canDelete, canEditBase, finalizeMeeting, reopenMeeting,
-  versionLabel, compareNo, openItems, isOverdue, distribution, fileSafe,
+  versionLabel, compareNo, openItems, isOverdue, distribution, fileSafe, changeLg, lgFromCompany, nextNo,
+  normalizeLg, parseLgList, projectLgs, objectionClause,
 } from '../js/model.js';
 
 function setup() {
   const project = newProject('BV Musterstraße');
   project.author = 'C. Saringer';
-  const mueller = newCompany('Müller Bau', 'Rohbau');
+  const mueller = newCompany('Müller Bau', 'Baumeister', ['07']);
   mueller.contacts.push(newContact('Max Müller', 'max@mueller.example'));
-  const elektro = newCompany('Elektro Huber', 'Elektro');
+  const elektro = newCompany('Trockenbau Huber', 'Trockenbau', ['39']);
   elektro.contacts.push(newContact('Eva Huber', 'eva@huber.example'));
   elektro.contacts.push({ ...newContact('Ohne Verteiler', 'x@huber.example'), inDistribution: false });
   project.companies.push(mueller, elektro);
   return { project, mueller, elektro };
 }
 
-test('erste Besprechung bekommt Nr. 1, Punkte werden fortlaufend nummeriert', () => {
+test('Nummern je Leistungsgruppe: LG.001 fortlaufend, projektweit über alle Sitzungen', () => {
   const { project } = setup();
   const { meeting } = createMeeting({ project, meetings: [], items: [], type: 'besprechung', date: '2026-10-06' });
   assert.equal(meeting.number, 1);
   const a = addItem({ meeting, items: [] });
   const b = addItem({ meeting, items: [a] });
-  assert.equal(a.no, '1.01');
-  assert.equal(b.no, '1.02');
-  // gelöschte Nummer wird nicht wiederverwendet, solange ein höherer Punkt existiert
-  const c = addItem({ meeting, items: [b] });
-  assert.equal(c.no, '1.03');
+  const t1 = addItem({ meeting, items: [a, b], lg: '39' });
+  assert.deepEqual([a.no, b.no, t1.no], ['00.001', '00.002', '39.001']);
+  // nächste Sitzung zählt in derselben LG weiter
+  const { meeting: m2 } = createMeeting({ project, meetings: [meeting], items: [a, b, t1], type: 'besprechung' });
+  assert.equal(addItem({ meeting: m2, items: [a, b, t1], lg: '39' }).no, '39.002');
 });
 
-test('Begehungen haben eigene Reihe mit Präfix B', () => {
+test('Besprechungen und Begehungen teilen sich die Nummern eines Projekts', () => {
   const { project } = setup();
   const { meeting: b1 } = createMeeting({ project, meetings: [], items: [], type: 'begehung' });
-  assert.equal(addItem({ meeting: b1, items: [] }).no, 'B1.01');
-  const { meeting: m1 } = createMeeting({ project, meetings: [b1], items: [], type: 'besprechung' });
+  const x = addItem({ meeting: b1, items: [], lg: '39' });
+  assert.equal(x.no, '39.001');
+  const { meeting: m1 } = createMeeting({ project, meetings: [b1], items: [x], type: 'besprechung' });
   assert.equal(m1.number, 1);
+  assert.equal(addItem({ meeting: m1, items: [x], lg: '39' }).no, '39.002');
+});
+
+test('LG wechseln: neue Nummer; Übernahme aus Firma nur ohne manuelle Wahl; gesperrt nach Fortschreibung', () => {
+  const { project, mueller, elektro } = setup();
+  const { meeting } = createMeeting({ project, meetings: [], items: [], type: 'besprechung' });
+  const existing = addItem({ meeting, items: [], lg: '39' }); // 39.001
+  let p = addItem({ meeting, items: [existing] }); // 00.001
+  p = lgFromCompany(p, [existing, p], meeting, elektro);
+  assert.equal(p.no, '39.002');
+  assert.equal(p.lgManual, false);
+  p = changeLg(p, [existing, p], meeting, '07');
+  assert.equal(p.no, '07.001');
+  assert.equal(p.lgManual, true);
+  // manuell gewählt → Firma ändert die LG nicht mehr
+  assert.equal(lgFromCompany(p, [existing, p], meeting, elektro).no, '07.001');
+  // zurück auf dieselbe LG behält die Nummer
+  assert.equal(changeLg(p, [existing, p], meeting, '07').no, '07.001');
+  // nach Fortschreibung keine Umnummerierung
+  const { meeting: m2, items: carriedAll } = createMeeting({ project, meetings: [meeting], items: [existing, p], type: 'besprechung' });
+  const carried = carriedAll.find((i) => i.id === p.id);
+  assert.equal(carried.no, '07.001');
+  assert.throws(() => changeLg(carried, [existing, carried], meeting, '39'), /fortgeschrieben/);
+  assert.equal(lgFromCompany(carried, [existing, carried], m2, mueller).no, '07.001');
+});
+
+test('LG voll bei 999 Punkten', () => {
+  const items = [{ id: 'x', projectId: 'p', lg: '39', no: '39.999' }];
+  assert.throws(() => nextNo(items, 'p', '39'), /voll/);
+  assert.equal(nextNo(items, 'p', '40'), '40.001');
+});
+
+test('LG-Eingaben und Bezeichnungen', () => {
+  assert.equal(normalizeLg('7'), '07');
+  assert.equal(normalizeLg('39'), '39');
+  assert.equal(normalizeLg('390'), null);
+  assert.deepEqual(parseLgList('07, 8 39;39'), ['07', '08', '39']);
+  const { project } = setup();
+  assert.deepEqual(projectLgs(project), [
+    { lg: '00', label: 'Allgemein' }, { lg: '07', label: 'Baumeister' }, { lg: '39', label: 'Trockenbau' },
+  ]);
+});
+
+test('Einwendungsklausel: Standard 14 Tage ab Übermittlung (ÖNORM B 2110)', () => {
+  const { project } = setup();
+  assert.equal(project.objectionDays, 14);
+  assert.match(objectionClause(project), /binnen 14 Tagen ab Übermittlung schriftlich/);
 });
 
 test('offene Punkte werden in die nächste Besprechung übernommen, erledigte und Infos nicht', () => {
@@ -83,17 +132,18 @@ test('Protokoll: Abschnitte, Verlauf, überfällig, Anlagen-Nummern', () => {
   const prot2 = buildProtocol({ project, meeting: m2, meetings: [m1, m2], items: [p3, q], attachments: [{ id: 'att1', kind: 'photo', caption: 'Achse 3' }] });
   assert.deepEqual(prot2.sections.map((s) => s.title), ['Neue Punkte', 'Fortgeschriebene Punkte']);
   const row = prot2.sections[1].rows[0];
-  assert.equal(row.no, '1.01');
+  assert.equal(row.no, '00.001');
+  assert.equal(row.lgLabel, 'Allgemein');
   assert.equal(row.note, 'Material fehlt');
   assert.equal(row.overdue, true); // Frist 10.10. < Sitzung 13.10.
   assert.equal(row.company, 'Müller Bau');
-  assert.equal(prot2.figures[0].label, 'Abb. 1.01-1');
+  assert.equal(prot2.figures[0].label, 'Abb. 00.001-1');
 
   const prot3 = buildProtocol({ project, meeting: m3, meetings: [m1, m2, m3], items: [p5, q] });
   const done = prot3.sections.find((s) => s.title.startsWith('Erledigt')).rows[0];
   assert.deepEqual(done.history, [{ date: '13.10.2026', note: 'Material fehlt' }]);
   assert.equal(done.overdue, false);
-  assert.match(prot3.objection, /binnen 5 Werktagen/);
+  assert.match(prot3.objection, /binnen 14 Tagen/);
 });
 
 test('Mail je Firma: nur eigene offene Punkte, überfällig zuerst, Hinweis auf Gesamtprotokoll', () => {
@@ -112,7 +162,7 @@ test('Mail je Firma: nur eigene offene Punkte, überfällig zuerst, Hinweis auf 
   assert.deepEqual(d.recipients, ['max@mueller.example']);
   assert.equal(d.overdue, 1);
   assert.ok(d.body.indexOf('ÜBERFÄLLIG') < d.body.indexOf('NEU'));
-  assert.match(d.body, /1\.01 {2}Brandschott – Frist 01\.10\.2026/);
+  assert.match(d.body, /00\.001 {2}Brandschott – Frist 01\.10\.2026/);
   assert.match(d.body, /Maßgeblich ist das Gesamtprotokoll vom 06\.10\.2026/);
   assert.match(d.subject, /Baubesprechung Nr\. 1 vom 06\.10\.2026 – Ihre offenen Punkte \(Müller Bau\)/);
 
@@ -144,9 +194,9 @@ test('Endfassung sperrt, neue Fassung zählt hoch; Löschen nur ohne Fortschreib
 });
 
 test('Hilfsfunktionen', () => {
-  assert.ok(compareNo('1.10', '1.02') > 0);
-  assert.ok(compareNo('2.01', '10.01') < 0);
-  assert.ok(compareNo('B1.01', '1.01') > 0);
+  assert.ok(compareNo('39.010', '39.002') > 0);
+  assert.ok(compareNo('07.001', '39.001') < 0);
+  assert.ok(compareNo('00.002', '07.001') < 0);
   assert.equal(isOverdue({ status: 'offen', due: '2026-10-01' }, '2026-10-02'), true);
   assert.equal(isOverdue({ status: 'erledigt', due: '2026-10-01' }, '2026-10-02'), false);
   assert.equal(isOverdue({ status: 'offen', due: '' }, '2026-10-02'), false);
@@ -160,6 +210,6 @@ test('offene Punkte über alle Sitzungen', () => {
   const { meeting: m1 } = createMeeting({ project, meetings: [], items: [], type: 'besprechung' });
   const a = addItem({ meeting: m1, items: [] });
   const b = updateEntry(addItem({ meeting: m1, items: [a] }), m1.id, { status: 'erledigt' });
-  assert.deepEqual(openItems([a, b], project.id).map((x) => x.item.no), ['1.01']);
-  assert.equal(itemsForMeeting([b, a], m1.id)[0].item.no, '1.01');
+  assert.deepEqual(openItems([a, b], project.id).map((x) => x.item.no), ['00.001']);
+  assert.equal(itemsForMeeting([b, a], m1.id)[0].item.no, '00.001');
 });

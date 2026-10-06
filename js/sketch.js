@@ -1,6 +1,6 @@
 // Vollbild-Zeichenfläche für Apple Pencil: leere Skizze oder Einzeichnen in ein Foto.
 // Striche werden als Vektoren in Bildkoordinaten gespeichert, damit sie später weiter bearbeitbar sind.
-import { h } from './ui.js';
+import { h, icon, mount } from './ui.js';
 import { decode, drawToCanvas, canvasToBlob, thumbFromCanvas } from './images.js';
 
 export const BLANK_SIZE = { width: 2100, height: 1485 }; // A4 quer
@@ -113,15 +113,15 @@ export async function openSketch({ background = null, width, height, strokes = [
     for (const [k, b] of Object.entries(toolButtons)) b.classList.toggle('on', tool === k);
     colorButtons.forEach((b) => b.classList.toggle('on', tool === 'pen' && b.dataset.color === color));
     widthButtons.forEach((b) => b.classList.toggle('on', Number(b.dataset.w) === lineWidth));
-    fingerBtn.textContent = fingerDraws ? 'Finger: zeichnet' : 'Finger: aus';
+    mount(fingerBtn, icon('hand'), fingerDraws ? 'Finger zeichnet' : 'Finger aus');
     if (gridBtn) gridBtn.classList.toggle('on', showGrid);
     undoBtn.disabled = !undo.length;
     redoBtn.disabled = !redo.length;
   }
 
-  toolButtons.pen = btn('✎ Stift', () => { tool = 'pen'; refreshToolbar(); });
-  toolButtons.marker = btn('▮ Marker', () => { tool = 'marker'; refreshToolbar(); });
-  toolButtons.erase = btn('⌫ Radierer', () => { tool = 'erase'; refreshToolbar(); });
+  toolButtons.pen = btn([icon('pen'), 'Stift'], () => { tool = 'pen'; refreshToolbar(); });
+  toolButtons.marker = btn([icon('marker'), 'Marker'], () => { tool = 'marker'; refreshToolbar(); });
+  toolButtons.erase = btn([icon('eraser'), 'Radierer'], () => { tool = 'erase'; refreshToolbar(); });
   for (const [c, name] of COLORS) {
     const b = btn('', () => { tool = 'pen'; color = c; refreshToolbar(); }, { class: 'swatch', 'aria-label': name, style: `background:${c}` });
     b.dataset.color = c;
@@ -132,11 +132,11 @@ export async function openSketch({ background = null, width, height, strokes = [
     b.dataset.w = w;
     widthButtons.push(b);
   }
-  const undoBtn = btn('↶', () => step(undo, redo), { 'aria-label': 'Rückgängig' });
-  const redoBtn = btn('↷', () => step(redo, undo), { 'aria-label': 'Wiederholen' });
+  const undoBtn = btn(icon('undo'), () => step(undo, redo), { 'aria-label': 'Rückgängig' });
+  const redoBtn = btn(icon('redo'), () => step(redo, undo), { 'aria-label': 'Wiederholen' });
   fingerBtn = btn('', () => { fingerDraws = !fingerDraws; refreshToolbar(); });
-  if (!background) gridBtn = btn('Raster', () => { showGrid = !showGrid; renderBase(); paint(); refreshToolbar(); });
-  const clearBtn = btn('Alles löschen', () => {
+  if (!background) gridBtn = btn([icon('grid'), 'Raster'], () => { showGrid = !showGrid; renderBase(); paint(); refreshToolbar(); });
+  const clearBtn = btn([icon('trash'), 'Alles löschen'], () => {
     if (!state.length) return;
     commit(() => (state = []));
   });
