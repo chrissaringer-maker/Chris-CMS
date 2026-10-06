@@ -82,6 +82,11 @@ node test/e2e.mjs test-output             # Browser-Durchlauf mit Playwright (br
 
 ### Veröffentlichen (GitHub Pages)
 
+**Derzeit:** veröffentlicht aus dem Repo `Chris-CMS`, Zweig `gh-pages` →
+**https://chrissaringer-maker.github.io/Chris-CMS/** (jeder Push auf `gh-pages` aktualisiert die App).
+
+Später sauberer in einem eigenen Repo:
+
 Repo → **Settings → Pages → Build and deployment → Source: „Deploy from a branch“, Branch `main`, Ordner `/ (root)`**.
 Die App ist dann unter `https://<benutzer>.github.io/baustellen-protokoll/` erreichbar.
 Der Programmcode ist öffentlich, **die Daten nie** – sie liegen ausschließlich auf dem iPad.
