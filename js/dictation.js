@@ -28,6 +28,7 @@ export function startDictation({ lang = 'de-AT', onText, onEnd: onEndOnce, onErr
   let stopped = false;
   let rec;
   let triedFallbackLang = false;
+  let restarts = [];
 
   const text = () => `${finals}${interim}`.replace(/\s+/g, ' ').trim();
 
@@ -58,16 +59,28 @@ export function startDictation({ lang = 'de-AT', onText, onEnd: onEndOnce, onErr
       onEnd(text());
     };
     // Safari beendet nach Sprechpausen von selbst – dann neu starten, bis der Knopf erneut gedrückt wird.
+    // Bremse: höchstens 3 Neustarts in 10 s und nur bei sichtbarer Seite (sonst Endlosschleife bzw.
+    // falsche Berechtigungsmeldung, weil WebKit Fehler oft nur als „aborted“ meldet).
     rec.onend = () => {
       if (stopped) return onEnd(text());
       finals += interim ? `${interim} ` : '';
       interim = '';
-      try {
-        rec.start();
-      } catch {
+      const now = Date.now();
+      restarts = restarts.filter((t) => now - t < 10000);
+      if (document.visibilityState !== 'visible' || restarts.length >= 3) {
         stopped = true;
-        onEnd(text());
+        return onEnd(text());
       }
+      restarts.push(now);
+      setTimeout(() => {
+        if (stopped) return onEnd(text());
+        try {
+          rec.start();
+        } catch {
+          stopped = true;
+          onEnd(text());
+        }
+      }, 300);
     };
   };
 

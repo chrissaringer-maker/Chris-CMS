@@ -28,6 +28,7 @@ await context.addInitScript(() => {
       this.running = true;
       setTimeout(() => this.emit([['Kabeltrasse', false]]), 50);
       setTimeout(() => this.emit([['Kabeltrasse nachrüsten', true]]), 120);
+      setTimeout(() => this.emit([['SPÄTER', true]]), 700);
     }
     emit(list) {
       if (!this.running) return;
@@ -52,8 +53,15 @@ async function fillModal(values, ok) {
   for (const [label, value] of Object.entries(values)) await modal.getByLabel(label, { exact: true }).fill(value);
   await modal.getByRole('button', { name: ok }).click();
 }
+// PDF/Sicherung: erst erzeugen, dann im Dialog „Teilen …“ (zweistufig, wegen Safari-Freigabefenster)
 async function download(trigger) {
-  const [dl] = await Promise.all([page.waitForEvent('download'), trigger()]);
+  const [dl] = await Promise.all([
+    page.waitForEvent('download', { timeout: 60000 }),
+    (async () => {
+      await trigger();
+      await modal.getByRole('button', { name: 'Teilen …' }).click({ timeout: 60000 });
+    })(),
+  ]);
   const path = join(OUT, dl.suggestedFilename());
   await dl.saveAs(path);
   return path;
@@ -90,6 +98,15 @@ await page.getByRole('button', { name: 'Alle Firmen hinzufügen' }).click();
 await page.getByRole('button', { name: 'Punkt', exact: true }).click();
 const card1 = page.locator('.item').nth(0);
 assert.equal(await card1.locator('.item-no').textContent(), '00.001');
+// Regression: ein laufendes Diktat endet beim Verlassen der Ansicht und schreibt nichts mehr nach
+await page.getByRole('button', { name: 'Diktat' }).click();
+await page.locator('#back').click();
+await page.getByRole('button', { name: 'Neue Baubesprechung' }).waitFor();
+await page.waitForTimeout(1000);
+assert.equal(await page.getByRole('button', { name: 'Neue Baubesprechung' }).count(), 1, 'Leiste der Projektansicht bleibt');
+await page.getByRole('link', { name: /Baubesprechung Nr\. 1/ }).click();
+await card1.locator('textarea').waitFor();
+assert.ok(!(await card1.locator('textarea').inputValue()).includes('SPÄTER'), 'kein Nachschreiben nach Zurück');
 await card1.locator('textarea').fill('Brandschott Achse 3 herstellen, Material: Kompriband');
 await card1.getByLabel('Zuständig').selectOption({ label: 'Trockenbau Huber' });
 assert.equal(await card1.locator('.item-no').textContent(), '39.001', 'Nummer folgt der LG der Firma');
@@ -101,6 +118,15 @@ await page.waitForTimeout(250);
 await page.getByRole('button', { name: 'Stopp' }).click();
 await page.getByRole('button', { name: 'Diktat' }).waitFor();
 assert.equal(await card1.locator('textarea').inputValue(), 'Brandschott Achse 3 herstellen, Material: Kompriband Kabeltrasse nachrüsten');
+// Regression: ein laufendes Diktat endet beim Verlassen der Ansicht und schreibt nichts mehr nach
+await page.getByRole('button', { name: 'Diktat' }).click();
+await page.locator('#back').click();
+await page.getByRole('button', { name: 'Neue Baubesprechung' }).waitFor();
+await page.waitForTimeout(1000);
+assert.equal(await page.getByRole('button', { name: 'Neue Baubesprechung' }).count(), 1, 'Leiste der Projektansicht bleibt');
+await page.getByRole('link', { name: /Baubesprechung Nr\. 1/ }).click();
+await card1.locator('textarea').waitFor();
+assert.ok(!(await card1.locator('textarea').inputValue()).includes('SPÄTER'), 'kein Nachschreiben nach Zurück');
 await card1.locator('textarea').fill('Brandschott Achse 3 herstellen, Material: Kompriband');
 // Punkt 2: Info, unklar (allgemein, LG 00)
 await page.getByRole('button', { name: 'Punkt', exact: true }).click();

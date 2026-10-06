@@ -37,6 +37,7 @@ export const saveMeeting = (meeting) => {
 };
 
 export const saveItem = (item) => db.put('items', item);
+export const saveItems = (...items) => (items.length ? db.put('items', ...items) : Promise.resolve());
 export const saveAttachment = (att) => db.put('attachments', att);
 export const getAttachment = (id) => db.get('attachments', id);
 

@@ -1,12 +1,12 @@
 // Einstieg: Router und die Ansichten Start, Projekt, Firmen, Projektdaten, Sicherung.
-import { h, icon, mount, add, labeled, setRail, getPrefs, setPrefs, applyPrefs, setTitle, toast, ask, confirmAsk, shareFile, pickFile, releaseBlobUrls, markSaved } from './ui.js';
+import { h, icon, mount, add, labeled, setRail, getPrefs, setPrefs, applyPrefs, setTitle, toast, ask, confirmAsk, offerShare, pickFile, releaseBlobUrls, markSaved } from './ui.js';
 import * as store from './store.js';
-import { exportAll, importAll, backupAgeDays } from './backup.js';
+import { exportAll, importAll, backupAgeDays, markBackupDone } from './backup.js';
 import {
   newProject, newCompany, newContact, parseLgList, seriesOf, meetingTitle, formatDate, openItems, companyName,
   isOverdue, isoDate, MEETING_TYPES, DEFAULT_OBJECTION_TEXT, DEFAULT_OBJECTION_DAYS, versionLabel,
 } from './model.js';
-import { renderMeeting, flushPending } from './meeting.js';
+import { renderMeeting, flushPending, stopDictation, leaveMeeting } from './meeting.js';
 
 const app = document.getElementById('app');
 
@@ -20,6 +20,7 @@ const routes = [
 ];
 
 async function route() {
+  leaveMeeting();
   await flushPending();
   releaseBlobUrls();
   setRail([]);
@@ -41,7 +42,12 @@ async function route() {
 }
 
 window.addEventListener('hashchange', route);
-for (const ev of ['pagehide', 'visibilitychange']) window.addEventListener(ev, () => flushPending());
+for (const ev of ['pagehide', 'visibilitychange']) {
+  window.addEventListener(ev, () => {
+    if (ev === 'pagehide' || document.visibilityState === 'hidden') stopDictation();
+    flushPending();
+  });
+}
 
 // ---------- Start ----------
 
@@ -107,6 +113,11 @@ async function renderProject(id) {
 
   const start = async (type) => {
     if (!project.companies.length && !(await confirmAsk('Noch keine Firmen', 'Ohne Firmen kannst du keine Zuständigkeiten vergeben. Trotzdem anlegen?', 'Trotzdem'))) return;
+    const prev = seriesOf(meetings, project.id, type).at(-1);
+    if (prev && prev.status !== 'endfassung' && !(await confirmAsk(
+      `${meetingTitle(prev)} ist noch nicht abgeschlossen`,
+      'Punkte, die du dort noch ergänzt, werden beim Öffnen der neuen Sitzung automatisch übernommen. Statusänderungen an schon übernommenen Punkten musst du in der neuen Sitzung nachtragen. Trotzdem neue Sitzung anlegen?',
+      'Neue Sitzung'))) return;
     const m = await store.startMeeting(bundle, type);
     location.hash = `#/m/${m.id}`;
   };
@@ -313,8 +324,16 @@ async function renderBackup() {
         e.target.disabled = true;
         try {
           const blob = await exportAll();
-          await shareFile(blob, `baustellen-protokoll-sicherung-${isoDate()}.bpsicherung`, 'Sicherung Baustellen-Protokoll');
-          toast('Sicherung erstellt.');
+          const how = await offerShare(blob, `baustellen-protokoll-sicherung-${isoDate()}.bpsicherung`, 'Sicherung Baustellen-Protokoll');
+          if (how === 'shared' || how === 'downloaded') {
+            await markBackupDone();
+            toast(how === 'shared' ? 'Sicherung weitergegeben. Bitte prüfen, dass sie in „Dateien“ oder OneDrive angekommen ist.' : 'Sicherung heruntergeladen – bitte in „Dateien“ prüfen.', 6000);
+          } else if (how === 'aborted') {
+            toast('Abgebrochen – es wurde NICHTS gesichert.', 6000);
+          } else {
+            toast('Teilen nicht möglich – es wurde nichts gesichert.', 6000);
+          }
+          renderBackup();
         } finally {
           e.target.disabled = false;
         }

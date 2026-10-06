@@ -1,9 +1,10 @@
 // Ansicht einer Besprechung/Begehung: Kopf, Teilnehmer, Punkte (Diktat), Fotos/Skizzen, Abschluss und Versand.
-import { h, icon, mount, add, labeled, setRail, setTitle, toast, ask, confirmAsk, choose, shareFile, copyText, blobUrl, markSaved, pickFile, viewImage } from './ui.js';
+import { h, icon, mount, add, labeled, setRail, setTitle, toast, ask, confirmAsk, choose, offerShare, copyText, blobUrl, markSaved, pickFile, viewImage } from './ui.js';
 import * as store from './store.js';
 import {
   uid, meetingTitle, formatDate, isLocked, versionLabel, finalizeMeeting, reopenMeeting, addItem, itemsForMeeting,
   canEditBase, canDelete, canRenumber, changeLg, lgFromCompany, normalizeLg, projectLgs, lgLabel, LG_GENERAL,
+  carryOver, laterMeeting, seriesOf,
   defaultStatus, isOverdue, buildProtocol, companyDigests, mailtoUrl, distribution, fileSafe,
   ITEM_TYPES, STATUS, isoDate,
 } from './model.js';
@@ -15,7 +16,21 @@ import { dictationAvailable, startDictation } from './dictation.js';
 // Aktueller Punkt bleibt über ein Neuzeichnen der Ansicht hinweg erhalten.
 let remembered = { meetingId: null, itemId: null };
 let dictation = null; // laufendes Diktat { stop, itemId }
-let keyboardFallback = false; // true, wenn Safari die Spracherkennung verweigert hat
+let keyboardFallback = false; // true, wenn Safari die Spracherkennung dauerhaft verweigert
+let renderGen = 0; // jede Ansicht bekommt eine Nummer; ältere Rückrufe (Diktat-Ende) werden verworfen
+
+// Beim Verlassen der Besprechung: alle noch laufenden Rückrufe dieser Ansicht ungültig machen.
+export function leaveMeeting() {
+  renderGen++;
+  stopDictation();
+}
+
+// Beendet ein laufendes Diktat sofort (App im Hintergrund, Kamera, Skizze, anderer Punkt).
+export function stopDictation() {
+  const d = dictation;
+  dictation = null;
+  d?.stop();
+}
 
 // ---------- verzögertes Speichern (Tippen/Diktieren soll nicht bei jedem Zeichen schreiben) ----------
 const pending = new Map();
@@ -47,16 +62,28 @@ const select = (options, value, onchange, disabled = false) => {
 export async function renderMeeting(app, id) {
   const found = await store.getMeeting(id);
   if (!found) throw new Error('Sitzung nicht gefunden.');
+  stopDictation();
+  const gen = ++renderGen;
   const bundle = await store.loadBundle(found.projectId);
   const { project } = bundle;
   const meeting = bundle.meetings.find((m) => m.id === id);
+  // Fortschreibung abgleichen: Punkte, die in früheren Sitzungen nachträglich ergänzt wurden und offen sind
+  if (!isLocked(meeting) && seriesOf(bundle.meetings, project.id, meeting.type).at(-1)?.id === meeting.id) {
+    const synced = carryOver({ meetings: bundle.meetings, items: bundle.items, meeting });
+    if (synced.length) {
+      await store.saveItems(...synced);
+      const byId = new Map(synced.map((i) => [i.id, i]));
+      bundle.items = bundle.items.map((i) => byId.get(i.id) ?? i);
+      setTimeout(() => toast(`${synced.length} offene(r) Punkt(e) aus früheren Sitzungen übernommen.`, 5000), 300);
+    }
+  }
   const itemsById = new Map(bundle.items.map((i) => [i.id, i]));
   const attById = new Map(bundle.attachments.map((a) => [a.id, a]));
   const locked = isLocked(meeting);
   const today = isoDate();
   const cards = new Map(); // itemId → Karte und Zugriffe für die Daumenleiste
   let currentId = null;
-  if (dictation) dictation.stop();
+  const stale = () => gen !== renderGen;
 
   setTitle(`${meetingTitle(meeting)} · ${formatDate(meeting.date)}`, `#/p/${project.id}`);
 
@@ -138,6 +165,7 @@ export async function renderMeeting(app, id) {
   const saveTarget = (target) => (target.entry ? store.saveItem(itemsById.get(target.item.id)) : store.saveMeeting(meeting));
 
   async function addPhotos(target, capture) {
+    stopDictation();
     const files = await pickFile({ capture, multiple: !capture });
     if (!files.length) return;
     toast('Foto wird verarbeitet …');
@@ -155,6 +183,7 @@ export async function renderMeeting(app, id) {
   }
 
   async function addSketch(target) {
+    stopDictation();
     const res = await openSketch({ ...BLANK_SIZE, title: 'Skizze' });
     if (!res) return;
     const att = {
@@ -393,10 +422,6 @@ export async function renderMeeting(app, id) {
     return item;
   }
 
-  function stopDictation() {
-    dictation?.stop();
-  }
-
   function toggleDictation() {
     if (dictation) return stopDictation();
     let target = cards.get(currentId);
@@ -410,6 +435,7 @@ export async function renderMeeting(app, id) {
     const base = field.value;
     const sep = base && !/\s$/.test(base) ? ' ' : '';
     const write = (t) => {
+      if (stale() || !field.isConnected) return; // Ansicht inzwischen gewechselt: nichts mehr schreiben
       field.value = t ? `${base}${sep}${t}` : base;
       field.dispatchEvent(new Event('input'));
     };
@@ -420,13 +446,15 @@ export async function renderMeeting(app, id) {
         onText: write,
         onEnd: (t) => {
           write(t);
+          if (stale()) return;
           dictation = null;
           flushPending();
           updateRail();
         },
         onError: (msg, code) => {
+          if (stale()) return;
           toast(msg, 7000);
-          if (code === 'service-not-allowed' || code === 'not-allowed') keyboardFallback = true;
+          if (code === 'service-not-allowed') keyboardFallback = true;
         },
       }),
     };
@@ -455,6 +483,7 @@ export async function renderMeeting(app, id) {
   };
 
   function updateRail() {
+    if (stale()) return;
     const c = cards.get(currentId);
     const back = { icon: 'back', label: 'Zurück', href: `#/p/${project.id}` };
     const nav = [
@@ -521,8 +550,9 @@ export async function renderMeeting(app, id) {
     const blob = await buildPdf(protocol, { draft, images });
     if (blob.size > 20 * 1048576) toast(`Achtung: Das PDF ist ${(blob.size / 1048576).toFixed(0)} MB groß – für E-Mail eventuell zu groß. Weniger Fotos anhängen oder als Link versenden.`, 8000);
     const name = `${fileSafe(`${project.name}_${protocol.title}_${meeting.date}_${draft ? 'Vorabzug' : protocol.version}`)}.pdf`;
-    const how = await shareFile(blob, name, `${protocol.title} vom ${protocol.date}`);
+    const how = await offerShare(blob, name, `${protocol.title} vom ${protocol.date}`);
     if (how === 'downloaded') toast('PDF wurde heruntergeladen.');
+    if (how === 'failed') toast('Teilen war nicht möglich. Bitte erneut versuchen.', 6000);
   }
 
   const busy = (fn) => async (e) => {
@@ -557,7 +587,11 @@ export async function renderMeeting(app, id) {
   };
 
   const reopen = async () => {
-    if (!(await confirmAsk('Neue Fassung anlegen?', `Die Sitzung wird wieder bearbeitbar. Beim nächsten Abschluss entsteht „Fassung ${meeting.finals.length + 1}“. Die bisherige Fassung bleibt als PDF erhalten, wenn du sie versendet hast.`, 'Neue Fassung'))) return;
+    const later = laterMeeting(bundle.meetings, meeting);
+    const hint = later
+      ? ` Achtung: ${meetingTitle(later)} ist bereits angelegt. Neue offene Punkte werden dort beim Öffnen übernommen; Statusänderungen an bereits übernommenen Punkten musst du in Nr. ${later.number} selbst nachtragen.`
+      : '';
+    if (!(await confirmAsk('Neue Fassung anlegen?', `Die Sitzung wird wieder bearbeitbar. Beim nächsten Abschluss entsteht „Fassung ${meeting.finals.length + 1}“. Die bisherige Fassung bleibt als PDF erhalten, wenn du sie versendet hast.${hint}`, 'Neue Fassung'))) return;
     Object.assign(meeting, reopenMeeting(meeting));
     await store.saveMeeting(meeting);
     rerender();

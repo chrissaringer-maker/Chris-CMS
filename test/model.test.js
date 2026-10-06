@@ -4,7 +4,7 @@ import {
   newProject, newCompany, newContact, createMeeting, addItem, updateEntry, entryFor, itemsForMeeting,
   buildProtocol, companyDigests, mailtoUrl, canDelete, canEditBase, finalizeMeeting, reopenMeeting,
   versionLabel, compareNo, openItems, isOverdue, distribution, fileSafe, changeLg, lgFromCompany, nextNo,
-  normalizeLg, parseLgList, projectLgs, objectionClause,
+  normalizeLg, parseLgList, projectLgs, objectionClause, carryOver, laterMeeting,
 } from '../js/model.js';
 
 function setup() {
@@ -212,4 +212,24 @@ test('offene Punkte über alle Sitzungen', () => {
   const b = updateEntry(addItem({ meeting: m1, items: [a] }), m1.id, { status: 'erledigt' });
   assert.deepEqual(openItems([a, b], project.id).map((x) => x.item.no), ['00.001']);
   assert.equal(itemsForMeeting([b, a], m1.id)[0].item.no, '00.001');
+});
+
+test('Fortschreibung auch, wenn die Vorsitzung nach Anlage der Folgesitzung ergänzt wird', () => {
+  const { project, mueller } = setup();
+  const { meeting: m1 } = createMeeting({ project, meetings: [], items: [], type: 'besprechung', date: '2026-10-06' });
+  const a = addItem({ meeting: m1, items: [], companyId: mueller.id });
+  const { meeting: m2, items: carried } = createMeeting({ project, meetings: [m1], items: [a], type: 'besprechung', date: '2026-10-13' });
+  assert.equal(carried.length, 1);
+  // nachträglich in Sitzung 1 ergänzt: offen und erledigt
+  const late = addItem({ meeting: m1, items: [carried[0]] });
+  const lateDone = updateEntry(addItem({ meeting: m1, items: [carried[0], late] }), m1.id, { status: 'erledigt' });
+  const sync = carryOver({ meetings: [m1, m2], items: [carried[0], late, lateDone], meeting: m2 });
+  assert.deepEqual(sync.map((i) => i.id), [late.id], 'nur der offene, noch fehlende Punkt');
+  assert.equal(entryFor(sync[0], m2.id).status, 'offen');
+  // Punkte aus Sitzung 1, die in Sitzung 3 weiterlaufen, werden für Sitzung 2 nicht angefasst
+  const { meeting: m3, items: c3 } = createMeeting({ project, meetings: [m1, m2], items: [...sync, lateDone, carried[0]], type: 'besprechung' });
+  assert.equal(c3.length, 2);
+  assert.equal(carryOver({ meetings: [m1, m2, m3], items: c3, meeting: m2 }).length, 0);
+  assert.equal(laterMeeting([m1, m2, m3], m1).id, m2.id);
+  assert.equal(laterMeeting([m1, m2, m3], m3), null);
 });

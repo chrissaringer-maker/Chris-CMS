@@ -118,7 +118,8 @@ const typeMs = Date.now() - tType - 800;
 
 // Vorabzug-PDF
 const tPdf = Date.now();
-const [pdf] = await Promise.all([page.waitForEvent('download', { timeout: 180000 }), page.getByRole('button', { name: 'Vorabzug-PDF' }).click()]);
+const shareInDialog = () => page.locator('.modal').getByRole('button', { name: 'Teilen …' }).click({ timeout: 180000 });
+const [pdf] = await Promise.all([page.waitForEvent('download', { timeout: 180000 }), page.getByRole('button', { name: 'Vorabzug-PDF' }).click().then(shareInDialog)]);
 const pdfPath = join(OUT, 'stress-vorabzug.pdf');
 await pdf.saveAs(pdfPath);
 const pdfMs = Date.now() - tPdf;
@@ -127,7 +128,7 @@ const pdfPages = Number((execSync(`pdfinfo "${pdfPath}" | grep Pages || true`).t
 // Sicherung
 await page.goto(`${BASE}#/sicherung`);
 const tBak = Date.now();
-const [bak] = await Promise.all([page.waitForEvent('download', { timeout: 180000 }), page.getByRole('button', { name: 'Sicherung erstellen' }).click()]);
+const [bak] = await Promise.all([page.waitForEvent('download', { timeout: 180000 }), page.getByRole('button', { name: 'Sicherung erstellen' }).click().then(shareInDialog)]);
 const bakPath = join(OUT, 'stress-sicherung.json');
 await bak.saveAs(bakPath);
 const backupMs = Date.now() - tBak;

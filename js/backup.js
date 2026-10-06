@@ -27,7 +27,6 @@ export async function exportAll() {
   }
   const json = JSON.stringify(head);
   const jsonBytes = new TextEncoder().encode(json).length;
-  await db.setMeta('lastBackup', head.exportedAt);
   return new Blob([MAGIC, `${jsonBytes}\n`, json, ...parts], { type: 'application/octet-stream' });
 }
 
@@ -72,6 +71,9 @@ export async function importAll(file) {
   await db.setMeta('lastBackup', data.exportedAt);
   return { projects: data.projects.length, meetings: data.meetings.length };
 }
+
+// Erst aufrufen, wenn die Datei wirklich weitergegeben bzw. gespeichert wurde.
+export const markBackupDone = () => db.setMeta('lastBackup', new Date().toISOString());
 
 export async function backupAgeDays() {
   const last = await db.getMeta('lastBackup');

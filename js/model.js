@@ -151,19 +151,37 @@ export function createMeeting({ project, meetings, items, type, date = isoDate()
     updatedAt: now.toISOString(),
   };
 
-  const changed = [];
-  if (prev) {
-    for (const item of items) {
-      if (item.projectId !== project.id || item.series !== type) continue;
-      const e = entryFor(item, prev.id);
-      if (!e || e.status !== 'offen') continue;
-      changed.push({
-        ...item,
-        log: [...item.log, { meetingId: meeting.id, note: '', companyId: e.companyId, due: e.due, status: 'offen', unclear: e.unclear, attachmentIds: [] }],
-      });
-    }
+  return { meeting, items: carryOver({ meetings: [...meetings, meeting], items, meeting }) };
+}
+
+// Fortschreibung: Punkte der Reihe, die in `meeting` noch fehlen und deren letzter Stand in einer
+// FRÜHEREN Sitzung offen ist – egal in welcher (auch wenn die Vorsitzung nachträglich ergänzt wurde).
+// Punkte, die schon in einer späteren Sitzung weiterlaufen, bleiben unberührt.
+export function carryOver({ meetings, items, meeting }) {
+  const number = new Map(meetings.filter((m) => m.type === meeting.type).map((m) => [m.id, m.number]));
+  const out = [];
+  for (const item of items) {
+    if (item.projectId !== meeting.projectId || item.series !== meeting.type || entryFor(item, meeting.id)) continue;
+    const nums = item.log.map((e) => number.get(e.meetingId));
+    if (nums.some((n) => n > meeting.number)) continue;
+    const before = item.log
+      .map((e, i) => ({ e, n: nums[i] }))
+      .filter(({ n }) => n !== undefined && n < meeting.number)
+      .sort((x, y) => x.n - y.n);
+    const last = before.at(-1)?.e;
+    if (!last || last.status !== 'offen') continue;
+    out.push({
+      ...item,
+      log: [...item.log, { meetingId: meeting.id, note: '', companyId: last.companyId, due: last.due, status: 'offen', unclear: last.unclear, attachmentIds: [] }],
+    });
   }
-  return { meeting, items: changed };
+  return out;
+}
+
+// Gibt es in derselben Reihe schon eine spätere Sitzung?
+export function laterMeeting(meetings, meeting) {
+  return meetings.filter((m) => m.projectId === meeting.projectId && m.type === meeting.type && m.number > meeting.number)
+    .sort((a, b) => a.number - b.number)[0] ?? null;
 }
 
 export function isLocked(meeting) {

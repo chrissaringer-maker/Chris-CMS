@@ -120,16 +120,22 @@ export function debounce(fn, ms) {
   return wrapped;
 }
 
+export const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
 // Datei über das iOS-Teilen-Menü weitergeben, sonst herunterladen.
+// Ergebnis: 'shared' | 'aborted' | 'downloaded' | 'failed' (installierte App: Downloads funktionieren dort nicht)
 export async function shareFile(blob, filename, title) {
-  const file = new File([blob], filename, { type: blob.type });
+  const file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
   if (navigator.canShare?.({ files: [file] })) {
     try {
       await navigator.share({ files: [file], title });
       return 'shared';
     } catch (e) {
       if (e.name === 'AbortError') return 'aborted';
+      if (isStandalone()) return 'failed';
     }
+  } else if (isStandalone()) {
+    return 'failed';
   }
   const url = URL.createObjectURL(blob);
   const a = h('a', { href: url, download: filename });
@@ -313,4 +319,13 @@ export function setRail(items = []) {
   mount(rail, out);
   document.body.classList.toggle('has-rail', out.length > 0);
   return rail;
+}
+
+// Zweistufig teilen: Die Datei ist schon fertig, der Tipp auf „Teilen …“ startet das Teilen sofort
+// (Safari erlaubt navigator.share nur kurz nach einem Tipp – lange Erzeugung davor würde es verhindern).
+export async function offerShare(blob, filename, title) {
+  const mb = blob.size / 1048576;
+  const ok = await ask({ title: 'Datei ist fertig', text: `${filename} · ${mb < 0.1 ? '< 0,1' : mb.toFixed(1).replace('.', ',')} MB`, ok: 'Teilen …', cancel: 'Abbrechen' });
+  if (!ok) return 'aborted';
+  return shareFile(blob, filename, title);
 }
