@@ -1,5 +1,5 @@
 // Offline-Fähigkeit: Netz zuerst (damit Updates sofort ankommen), bei Funkloch oder nach 3 s der Cache.
-const CACHE = 'bp-v2';
+const CACHE = 'bp-v3';
 const SHELL = [
   './', './index.html', './manifest.webmanifest', './css/app.css',
   './js/app.js', './js/ui.js', './js/db.js', './js/store.js', './js/model.js', './js/backup.js',

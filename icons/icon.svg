@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#EDF0F4"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#1C3454" flood-opacity="0.16"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <g id="motiv">
+    <g filter="url(#shadow)">
+      <rect x="272" y="226" width="480" height="616" rx="64" fill="#FFFFFF" stroke="#1C3454" stroke-width="36"/>
+    </g>
+    <rect x="402" y="176" width="220" height="104" rx="34" fill="#1C3454"/>
+    <circle cx="512" cy="214" r="18" fill="#FFFFFF"/>
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M352 432 l34 34 l64 -72" stroke="#E9A425" stroke-width="34"/>
+      <path d="M500 432 H672" stroke="#1C3454" stroke-width="30"/>
+      <path d="M368 566 H420" stroke="#C6CDD6" stroke-width="30"/>
+      <path d="M500 566 H672" stroke="#1C3454" stroke-width="30"/>
+      <path d="M368 700 H420" stroke="#C6CDD6" stroke-width="30"/>
+      <path d="M500 700 H610" stroke="#1C3454" stroke-width="30"/>
+    </g>
+  </g>
+</svg>
